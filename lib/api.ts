@@ -4,6 +4,7 @@
 
 import type {
   Category,
+  Comment,
   LookupInput,
   LookupMatch,
   ThreadDetail,
@@ -44,7 +45,7 @@ export async function getThreads(query: ThreadQuery): Promise<ThreadPage> {
     q: query.q,
     page: query.page,
   });
-  return page ?? { items: [], page: query.page, pageSize: 20, total: 0, hasMore: false };
+  return page ?? { items: [], page: query.page, pageSize: 8, total: 0, hasMore: false };
 }
 
 // cache() dedupes the call within one request, so generateMetadata and the page
@@ -53,6 +54,13 @@ export const getThread = cache(async (id: string): Promise<ThreadDetail | null> 
   if (USE_MOCK) return mock.thread(id);
   return get<ThreadDetail>(`/api/threads/${id}`);
 });
+
+// Comments for a card that is expanded in the list. Unlike getThread, this does not count a view.
+export async function getComments(id: string): Promise<Comment[]> {
+  if (USE_MOCK) return mock.thread(id)?.comments ?? [];
+  const data = await get<{ items: Comment[] }>(`/api/threads/${id}/comments`);
+  return data?.items ?? [];
+}
 
 export async function lookupPayer(input: LookupInput): Promise<LookupMatch[]> {
   if (USE_MOCK) return mock.lookup(input);
