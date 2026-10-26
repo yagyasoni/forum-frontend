@@ -1,26 +1,85 @@
 @import "tailwindcss";
 
+/* Color tokens. Light by default, dark follows the system setting. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --bg: #f7f7f8;
+  --surface: #ffffff;
+  --fg: #18181b;
+  --muted: #71717a;
+  --line: #e4e4e7;
+  --accent: #0f766e;
+  --accent-soft: #ccfbf1;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --bg: #09090b;
+    --surface: #18181b;
+    --fg: #fafafa;
+    --muted: #a1a1aa;
+    --line: #27272a;
+    --accent: #5eead4;
+    --accent-soft: #134e4a;
+    color-scheme: dark;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Expose the tokens to Tailwind: bg-bg, bg-surface, text-fg, text-muted, border-line, text-accent, bg-accent-soft */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* A small set of reusable pieces so components stay readable. */
+@utility btn {
+  @apply inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg px-3.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+}
+@utility btn-primary {
+  @apply btn bg-fg text-bg hover:opacity-90;
+}
+@utility btn-ghost {
+  @apply btn border border-line bg-surface text-fg hover:bg-bg;
+}
+@utility input {
+  @apply h-9 w-full rounded-lg border border-line bg-surface px-3 text-sm text-fg outline-none placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent/30;
+}
+@utility card {
+  @apply rounded-lg border border-line bg-surface shadow-xs;
+}
+@utility section-label {
+  @apply text-[11px] font-semibold tracking-wider text-muted uppercase;
+}
+@utility chip {
+  @apply inline-flex items-center rounded-md bg-accent-soft px-1.5 py-0.5 text-[11px] font-medium text-accent;
+}
+@utility nav-item {
+  @apply flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface/70 hover:text-fg;
+}
+/* Selected item: a flat neutral fill with dark text, the convention in Linear, Notion, and GitHub. */
+@utility nav-item-active {
+  @apply bg-zinc-200/70 font-medium text-fg hover:bg-zinc-200/70 hover:text-fg dark:bg-zinc-800 dark:hover:bg-zinc-800;
+}
+
+/* Thread and comment bodies arrive as sanitized HTML from the backend. */
+@layer components {
+  .post-body {
+    @apply text-[15px] leading-7 text-fg;
+  }
+  .post-body p {
+    @apply mb-3 last:mb-0;
+  }
+  .post-body ul,
+  .post-body ol {
+    @apply mb-3 list-disc pl-5;
+  }
+  .post-body a {
+    @apply text-accent underline underline-offset-2;
+  }
 }

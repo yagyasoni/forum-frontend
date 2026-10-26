@@ -1,69 +1,103 @@
-import Image from "next/image";
+import { Suspense } from "react";
+import Link from "next/link";
+import { connection } from "next/server";
+import FilterStrip from "@/components/FilterStrip";
+import Logo from "@/components/Logo";
+import LookupBox from "@/components/LookupBox";
+import { SignInButton } from "@/components/SignInDialog";
+import ThreadList from "@/components/ThreadList";
+import { getCategories, getThreads } from "@/lib/api";
+import type { Tab, ThreadQuery } from "@/lib/types";
+import { homeHref } from "@/lib/utils";
 
-export default function Home() {
+export default function Page(props: PageProps<"/">) {
+  // searchParams is request data, so the part that reads it streams in behind Suspense.
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <Suspense fallback={<HomeSkeleton />}>
+      <Home searchParams={props.searchParams} />
+    </Suspense>
+  );
+}
+
+async function Home({ searchParams }: { searchParams: PageProps<"/">["searchParams"] }) {
+  const query = parseQuery(await searchParams);
+  await connection(); // "5h ago" labels use the current time, so render this at request time
+  const [categories, threads] = await Promise.all([getCategories(), getThreads(query)]);
+  const isHome = !query.category && !query.q; // the welcome card and lookup show here only
+
+  return (
+    <div className="space-y-3">
+      {isHome && (
+        /* Two cards, one row: community on the left, payer lookup on the right. Stacked below laptop width. */
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">
+          <section className="card flex items-start gap-3 p-3.5">
+            <Logo size={32} className="hidden sm:block" />
+            <div className="min-w-0 flex-1">
+              <h1 className="text-sm font-semibold tracking-tight">AuditProRx Community</h1>
+              <p className="mt-0.5 text-xs leading-5 text-muted">
+                Independent pharmacies comparing notes on PBM audits, claim rejections, wholesaler invoices, and
+                compliance. Read freely, sign in to join.
+              </p>
+              <SignInButton className="btn-primary mt-2.5 h-7 px-2.5 text-xs">Join the community</SignInButton>
+            </div>
+          </section>
+          <LookupBox />
+        </div>
+      )}
+
+      <FilterStrip query={query} categories={categories} />
+
+      {query.q && (
+        <p className="flex items-center justify-between gap-3 text-sm text-muted">
+          <span>
+            Results for <strong className="text-fg">“{query.q}”</strong>
+          </span>
+          <Link href={homeHref({ ...query, q: undefined, page: 1 })} className="hover:text-fg">
+            Clear search
+          </Link>
+        </p>
+      )}
+
+      {threads.items.length > 0 ? (
+        <ThreadList page={threads} query={query} />
+      ) : (
+        <div className="card px-6 py-12 text-center">
+          <p className="font-medium">No threads here yet</p>
+          <p className="mt-1 text-sm text-muted">
+            {query.q ? "Try a different word or clear the search." : "Try another tab or category."}
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      )}
+    </div>
+  );
+}
+
+const TABS: Tab[] = ["latest", "top", "unanswered"];
+
+/** Turn the URL query string into a typed query with safe defaults. */
+function parseQuery(sp: Record<string, string | string[] | undefined>): ThreadQuery {
+  const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
+  const tab = first(sp.tab) as Tab;
+  const page = Number.parseInt(first(sp.page), 10);
+  return {
+    tab: TABS.includes(tab) ? tab : "latest",
+    category: first(sp.category) || undefined,
+    q: first(sp.q).trim() || undefined,
+    page: Number.isFinite(page) && page > 0 ? page : 1,
+  };
+}
+
+function HomeSkeleton() {
+  return (
+    <div className="animate-pulse space-y-4">
+      <div className="h-24 rounded-xl bg-line" />
+      <div className="h-9 w-64 rounded-lg bg-line" />
+      <div className="h-28 rounded-xl bg-line" />
+      <div className="card divide-y divide-line">
+        {Array.from({ length: 6 }, (_, i) => (
+          <div key={i} className="h-16" />
+        ))}
+      </div>
     </div>
   );
 }
