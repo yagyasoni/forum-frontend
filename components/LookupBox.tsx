@@ -81,7 +81,8 @@ export default function LookupBox() {
           )}
 
           {results.length > 0 && (
-            <ul className="divide-y divide-line text-xs">
+            // Capped height: a BIN on its own can match several plans in the master sheet.
+            <ul className="max-h-80 divide-y divide-line overflow-y-auto text-xs">
               {results.map((r) => (
                 <li key={`${r.pbmName}|${r.payerType}|${r.bin}|${r.pcn}|${r.group}`} className="flex items-center gap-3 px-3 py-2">
                   <div className="min-w-0 flex-1">

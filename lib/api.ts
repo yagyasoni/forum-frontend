@@ -46,7 +46,7 @@ export async function getThreads(query: ThreadQuery): Promise<ThreadPage> {
     q: query.q,
     page: query.page,
   });
-  return page ?? { items: [], page: query.page, pageSize: 20, total: 0, hasMore: false };
+  return page ?? { items: [], page: query.page, pageSize: 8, total: 0, hasMore: false };
 }
 
 // cache() dedupes the call within one request, so generateMetadata and the page
