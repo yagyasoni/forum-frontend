@@ -24,13 +24,18 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <SignInProvider>
           <TopBar />
 
-          <div className="mx-auto flex w-full max-w-7xl flex-1 gap-6 px-4 py-4 sm:py-5 xl:gap-8">
+          {/*
+            Grid: the two side columns share row 1 and the content spans rows 1 and 2.
+            So the left column is as tall as the right rail, and its last card can sit on the same
+            baseline as the right rail's last card.
+          */}
+          <div className="mx-auto grid w-full max-w-7xl flex-1 gap-6 px-4 py-4 sm:py-5 md:grid-cols-[15rem_minmax(0,1fr)] md:grid-rows-[auto_1fr] xl:grid-cols-[15rem_minmax(0,1fr)_18rem] xl:gap-8">
             {/* The side columns read the URL and the API, so they stream in behind Suspense. */}
-            <Suspense fallback={<aside className="hidden w-60 shrink-0 md:block" />}>
+            <Suspense fallback={<aside className="hidden md:block" />}>
               <Sidebar />
             </Suspense>
-            <main className="min-w-0 flex-1">{children}</main>
-            <Suspense fallback={<aside className="hidden w-72 shrink-0 xl:block" />}>
+            <main className="min-w-0 md:row-span-2">{children}</main>
+            <Suspense fallback={<aside className="hidden xl:block" />}>
               <RightRail />
             </Suspense>
           </div>

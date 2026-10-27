@@ -15,7 +15,7 @@ export default async function RightRail() {
   const threads = categories.reduce((n, c) => n + c.threadCount, 0);
 
   return (
-    <aside className="hidden w-72 shrink-0 xl:block">
+    <aside className="hidden xl:block">
       <div className="sticky top-20 flex flex-col gap-4">
         <section className="card p-4">
           <p className="section-label">About this community</p>

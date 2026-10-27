@@ -6,8 +6,9 @@ export default async function Sidebar() {
   const categories = await getCategories();
 
   return (
-    <aside className="hidden w-60 shrink-0 md:block">
-      <div className="sticky top-20">
+    <aside className="hidden md:block">
+      {/* Fills the column height so the nav can push its last card to the bottom edge. */}
+      <div className="sticky top-20 flex h-full flex-col">
         <SidebarNav categories={categories} />
       </div>
     </aside>

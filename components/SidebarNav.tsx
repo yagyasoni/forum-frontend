@@ -14,7 +14,7 @@ export default function SidebarNav({ categories }: { categories: Category[] }) {
   const activeCategory = useSearchParams().get("category");
 
   return (
-    <nav className="flex flex-col gap-5">
+    <nav className="flex flex-1 flex-col gap-5">
       <Link href="/" className={cx("nav-item", onHome && !activeCategory && "nav-item-active")}>
         <Home size={18} /> Home
       </Link>
@@ -42,7 +42,8 @@ export default function SidebarNav({ categories }: { categories: Category[] }) {
         </ul>
       </div>
 
-      <div className="card p-3.5">
+      {/* mt-auto: on wide screens this card's bottom lines up with the right rail's last card. */}
+      <div className="card mt-auto p-3.5">
         <p className="text-sm font-semibold">Join the discussion</p>
         <p className="mt-1 text-xs leading-5 text-muted">Post, comment, and save threads with a free account.</p>
         <SignInButton className="btn-primary mt-3 w-full">
