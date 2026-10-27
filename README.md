@@ -21,6 +21,8 @@ npm run dev                         # http://localhost:3000
 
 `NEXT_PUBLIC_USE_MOCK=true` in `.env.local` makes every API call answer from `lib/mock.ts`, so the app runs with no backend. Set it to `false` once forum-backend is up; nothing else changes.
 
+The payer lookup does not use forum-backend. It calls the main AuditProRx API's existing `GET /api/bin-search` (set by `NEXT_PUBLIC_AUDIT_API_BASE_URL`), the same endpoint the app's BIN Search page uses. A BIN is required; PCN and Group narrow the match.
+
 ## Layout
 
 ```

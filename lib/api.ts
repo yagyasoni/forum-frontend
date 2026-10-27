@@ -4,6 +4,7 @@
 
 import type {
   Category,
+  Comment,
   LookupInput,
   LookupMatch,
   ThreadDetail,
@@ -20,7 +21,8 @@ async function get<T>(
   path: string,
   params: Record<string, string | number | undefined> = {},
 ): Promise<T | null> {
-  const url = new URL(path, BASE);
+  // Concatenate rather than new URL(path, BASE): a leading-slash path would drop a base prefix like /forum.
+  const url = new URL(`${BASE!.replace(/\/+$/, "")}${path}`);
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== "") url.searchParams.set(key, String(value));
   }
@@ -54,8 +56,38 @@ export const getThread = cache(async (id: string): Promise<ThreadDetail | null> 
   return get<ThreadDetail>(`/api/threads/${id}`);
 });
 
+/** Comments only, for expanding them on a card. Unlike getThread this does not count a view. */
+export async function getComments(threadId: string): Promise<Comment[]> {
+  if (USE_MOCK) return mock.thread(threadId)?.comments ?? [];
+  const data = await get<{ items: Comment[] }>(`/api/threads/${threadId}/comments`);
+  return data?.items ?? [];
+}
+
+// The payer lookup is served by the main AuditProRx API, which already has the BIN search
+// used by the app's own BIN Search page. It needs a BIN; PCN and Group narrow the match.
+// It answers with distinct { pbm_name, payer_type } pairs, which we map to the forum's shape.
+const AUDIT_BASE = process.env.NEXT_PUBLIC_AUDIT_API_BASE_URL ?? "https://api.auditprorx.com";
+
 export async function lookupPayer(input: LookupInput): Promise<LookupMatch[]> {
   if (USE_MOCK) return mock.lookup(input);
-  const data = await get<{ items: LookupMatch[] }>("/api/lookup", input);
-  return data?.items ?? [];
+  const bin = input.bin?.trim() ?? "";
+  const pcn = input.pcn?.trim() ?? "";
+  const group = input.group?.trim() ?? "";
+  if (!bin) return [];
+
+  const url = new URL(`${AUDIT_BASE.replace(/\/+$/, "")}/api/bin-search`);
+  url.searchParams.set("bin", bin);
+  if (pcn) url.searchParams.set("pcn", pcn);
+  if (group) url.searchParams.set("group", group);
+
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText} for /api/bin-search`);
+  const rows: Array<{ pbm_name: string; payer_type: string }> = await res.json();
+  return rows.map((r) => ({
+    bin,
+    pcn: pcn.toUpperCase(),
+    group: group.toUpperCase(),
+    pbmName: r.pbm_name,
+    payerType: r.payer_type,
+  }));
 }

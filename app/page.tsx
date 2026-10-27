@@ -60,6 +60,18 @@ async function Home({ searchParams }: { searchParams: PageProps<"/">["searchPara
 
       {threads.items.length > 0 ? (
         <ThreadList page={threads} query={query} />
+      ) : threads.total > 0 ? (
+        // The page number is past the last page, for example an old link after threads were removed.
+        <div className="card px-6 py-12 text-center">
+          <p className="font-medium">Nothing on page {query.page}</p>
+          <p className="mt-1 text-sm text-muted">
+            There are {threads.total} threads here, on {Math.ceil(threads.total / threads.pageSize)}{" "}
+            {Math.ceil(threads.total / threads.pageSize) === 1 ? "page" : "pages"}.
+          </p>
+          <Link href={homeHref({ ...query, page: 1 })} className="btn-primary mt-4 h-8 px-3 text-xs">
+            Go to page 1
+          </Link>
+        </div>
       ) : (
         <div className="card px-6 py-12 text-center">
           <p className="font-medium">No threads here yet</p>

@@ -6,7 +6,7 @@ import { ArrowBigDown, ArrowBigUp, BadgeCheck, ChevronDown, Eye, Loader2, Lock, 
 import Avatar from "./Avatar";
 import ImageLightbox from "./ImageLightbox";
 import { SignInButton } from "./SignInDialog";
-import { getThread } from "@/lib/api";
+import { getComments } from "@/lib/api";
 import { ROLE_LABEL, type Comment, type ThreadRow } from "@/lib/types";
 import { compact, cx, timeAgo } from "@/lib/utils";
 
@@ -20,8 +20,7 @@ export default function ThreadCard({ thread }: { thread: ThreadRow }) {
     if (!open && comments === null) {
       setLoading(true);
       try {
-        const detail = await getThread(thread.id);
-        setComments(detail?.comments ?? []);
+        setComments(await getComments(thread.id));
       } finally {
         setLoading(false);
       }

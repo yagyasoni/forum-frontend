@@ -34,7 +34,7 @@ export default function Avatar({
         className,
       )}
     >
-      {username.slice(0, 2)}
+      {(username || "?").slice(0, 2)}
     </span>
   );
 }

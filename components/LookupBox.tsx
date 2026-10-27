@@ -20,7 +20,11 @@ export default function LookupBox() {
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const clean = { bin: form.bin.trim(), pcn: form.pcn.trim(), group: form.group.trim() };
-    if (!clean.bin && !clean.pcn && !clean.group) return;
+    if (!clean.bin) {
+      setError("Enter a BIN to look up. PCN and Group narrow the match.");
+      setResults([]);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -48,7 +52,7 @@ export default function LookupBox() {
         <h2 className="flex items-center gap-1.5 text-sm font-semibold tracking-tight">
           <ScanSearch size={14} className="text-accent" /> Payer lookup
         </h2>
-        <span className="text-[11px] text-muted">PBM and payer type</span>
+        <span className="text-[11px] text-muted">PBM and payer type by BIN</span>
       </div>
 
       {/* Stacked widths: fields and button on one row. Full width (lg+): button on its own full-width row. */}
@@ -73,13 +77,13 @@ export default function LookupBox() {
           </div>
 
           {!error && results.length === 0 && (
-            <p className="px-3 py-2 text-xs text-muted">No record found for this BIN / PCN / Group.</p>
+            <p className="px-3 py-2 text-xs text-muted">No record found for this BIN. Check the digits and try again.</p>
           )}
 
           {results.length > 0 && (
             <ul className="divide-y divide-line text-xs">
               {results.map((r) => (
-                <li key={`${r.bin}-${r.pcn}-${r.group}`} className="flex items-center gap-3 px-3 py-2">
+                <li key={`${r.pbmName}|${r.payerType}|${r.bin}|${r.pcn}|${r.group}`} className="flex items-center gap-3 px-3 py-2">
                   <div className="min-w-0 flex-1">
                     <p className="font-medium leading-tight">{r.pbmName}</p>
                     <p className="mt-0.5 font-mono text-[11px] text-muted">
