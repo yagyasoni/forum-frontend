@@ -8,12 +8,30 @@ export default function CopyLink({ className }: { className?: string }) {
   const [copied, setCopied] = useState(false);
 
   async function copy() {
+    const url = window.location.href;
+    let ok = false;
     try {
-      await navigator.clipboard.writeText(window.location.href);
+      await navigator.clipboard.writeText(url);
+      ok = true;
+    } catch {
+      // Clipboard API refused (older browser, http on a LAN address, missing permission):
+      // fall back to a hidden selection and the legacy copy command.
+      const ta = document.createElement("textarea");
+      ta.value = url;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        ok = document.execCommand("copy");
+      } finally {
+        ta.remove();
+      }
+    }
+    if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // clipboard blocked: nothing to do, the URL is still in the address bar
     }
   }
 

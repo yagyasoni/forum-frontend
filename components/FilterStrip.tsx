@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronDown } from "lucide-react";
+import { useMember } from "@/lib/member";
+import { MEMBER_CATEGORIES } from "@/lib/member-mock";
 import type { Category, Tab, ThreadQuery } from "@/lib/types";
 import { cx, homeHref } from "@/lib/utils";
 
@@ -18,19 +20,24 @@ const TABS: Array<{ value: Tab; label: string }> = [
  */
 export default function FilterStrip({
   query,
-  categories,
+  categories: visitorCategories,
 }: {
   query: ThreadQuery;
   categories: Category[];
 }) {
   const router = useRouter();
+  // Members also get the members-only categories (How To, Announcements).
+  const categories = useMember()
+    ? [...visitorCategories, ...MEMBER_CATEGORIES.filter((m) => !visitorCategories.some((c) => c.slug === m.slug))]
+    : visitorCategories;
 
   return (
     /* Below md: tabs and dropdown share one row as two identical columns whenever the row is at least
-       340px wide, the point where half a row holds all three tab labels. Narrower than that they stack as
-       two full-width rows. From md up only the tabs remain, at their natural width. */
+       460px wide, the point where half a row shows the longest category name in full. Narrower than
+       that they stack as two full-width rows, so a name is never cut off. From md up only the tabs
+       remain, at their natural width. */
     <div className="@container">
-      <div className="grid grid-cols-1 items-center gap-2 @[340px]:grid-cols-2 md:flex">
+      <div className="grid grid-cols-1 items-center gap-2 @[460px]:grid-cols-2 md:flex">
         <div className="flex h-9 rounded-lg border border-line bg-surface p-1">
           {TABS.map((tab) => (
             <Link

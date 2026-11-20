@@ -67,6 +67,12 @@
   @apply bg-zinc-200/70 font-medium text-fg hover:bg-zinc-200/70 hover:text-fg dark:bg-zinc-800 dark:hover:bg-zinc-800;
 }
 
+/* Visitor-only pieces (Sign in buttons, the Join card). The script in app/layout.tsx marks <html>
+   before first paint when a member is signed in, so these never flash on a member's page load. */
+html[data-member] .guest-only {
+  visibility: hidden;
+}
+
 /* Thread and comment bodies arrive as sanitized HTML from the backend. */
 @layer components {
   .post-body {

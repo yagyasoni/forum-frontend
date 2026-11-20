@@ -12,6 +12,7 @@ import type {
   ThreadQuery,
 } from "./types";
 import * as mock from "./mock";
+import type { VoteValue } from "./votes";
 import { cache } from "react";
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -61,6 +62,28 @@ export async function getComments(threadId: string): Promise<Comment[]> {
   if (USE_MOCK) return mock.thread(threadId)?.comments ?? [];
   const data = await get<{ items: Comment[] }>(`/api/threads/${threadId}/comments`);
   return data?.items ?? [];
+}
+
+/**
+ * Records this browser's vote on a thread (1 up, -1 down, 0 to remove) and returns the new score.
+ * The server keeps one vote per browser per thread, so repeating a vote never counts twice.
+ */
+export async function voteThread(threadId: string, value: VoteValue): Promise<{ score: number; myVote: VoteValue }> {
+  const { getVoterId, getLocalVote, setLocalVote } = await import("./votes");
+  if (USE_MOCK) {
+    const current = mock.thread(threadId)?.thread.likeCount ?? 0;
+    setLocalVote(threadId, value);
+    return { score: current + value, myVote: value };
+  }
+  const res = await fetch(`${BASE!.replace(/\/+$/, "")}/api/threads/${threadId}/vote`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "X-Forum-Voter": getVoterId() },
+    body: JSON.stringify({ value }),
+  });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText} for vote`);
+  const data = (await res.json()) as { score: number; myVote: VoteValue };
+  setLocalVote(threadId, data.myVote ?? getLocalVote(threadId));
+  return data;
 }
 
 // The payer lookup is served by the main AuditProRx API, which already has the BIN search

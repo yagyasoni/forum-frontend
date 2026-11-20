@@ -1,6 +1,6 @@
 import { ExternalLink, ShieldCheck } from "lucide-react";
 import Logo from "./Logo";
-import { SignInButton } from "./SignInDialog";
+import { PostCta } from "./MemberBits";
 import { getCategories } from "@/lib/api";
 
 const GUIDELINES = [
@@ -15,7 +15,7 @@ export default async function RightRail() {
   const threads = categories.reduce((n, c) => n + c.threadCount, 0);
 
   return (
-    <aside className="hidden xl:block">
+    <aside className="hidden w-72 shrink-0 xl:block">
       <div className="sticky top-20 flex flex-col gap-4">
         <section className="card p-4">
           <p className="section-label">About this community</p>
@@ -33,7 +33,7 @@ export default async function RightRail() {
               <dd className="text-base font-semibold tabular-nums">{categories.length}</dd>
             </div>
           </dl>
-          <SignInButton className="btn-primary mt-3 w-full">Sign in to post</SignInButton>
+          <PostCta className="btn-primary mt-3 w-full" />
         </section>
 
         <section className="card p-4">

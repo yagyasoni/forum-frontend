@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Search } from "lucide-react";
 import Logo from "./Logo";
-import { SignInButton } from "./SignInDialog";
+import AccountMenu from "./AccountMenu";
 
 export default function TopBar() {
   return (
@@ -21,7 +21,7 @@ export default function TopBar() {
           <input name="q" type="search" placeholder="Search threads" className="input bg-bg pl-9" />
         </form>
 
-        <SignInButton className="btn-primary shrink-0">Sign in</SignInButton>
+        <AccountMenu />
       </div>
     </header>
   );

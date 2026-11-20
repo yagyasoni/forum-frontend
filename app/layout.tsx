@@ -19,29 +19,43 @@ export const metadata: Metadata = {
 /** One layout for every page: top bar, left nav, content, right rail, footer. */
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning // the script below adds data-member before React loads
+    >
       <body className="flex min-h-full flex-col bg-bg font-sans text-fg">
+        {/* Member prototype: mark the page as signed-in before first paint (see .guest-only in globals.css). */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(localStorage.getItem("forum_member")&&localStorage.getItem("forum_member")!=="null")document.documentElement.dataset.member="1"}catch(e){}`,
+          }}
+        />
         <SignInProvider>
           <TopBar />
 
           {/*
-            Grid: the two side columns share row 1 and the content spans rows 1 and 2.
-            So the left column is as tall as the right rail, and its last card can sit on the same
-            baseline as the right rail's last card.
+            Two nested rows. The inner row holds the sidebar and the content and is exactly as tall as
+            the content (self-start), so the sidebar can end where the thread list ends. The right rail
+            sits outside it and can never stretch that row. The footer's mt-auto keeps it at the bottom
+            on short pages.
           */}
-          <div className="mx-auto grid w-full max-w-7xl flex-1 gap-6 px-4 py-4 sm:py-5 md:grid-cols-[15rem_minmax(0,1fr)] md:grid-rows-[auto_1fr] xl:grid-cols-[15rem_minmax(0,1fr)_18rem] xl:gap-8">
-            {/* The side columns read the URL and the API, so they stream in behind Suspense. */}
-            <Suspense fallback={<aside className="hidden md:block" />}>
-              <Sidebar />
-            </Suspense>
-            <main className="min-w-0 md:row-span-2">{children}</main>
-            <Suspense fallback={<aside className="hidden xl:block" />}>
+          <div className="mx-auto flex w-full max-w-7xl px-4 py-4 sm:py-5 xl:gap-8">
+            <div className="flex min-w-0 flex-1 gap-6 self-start xl:gap-8">
+              {/* The side columns read the URL and the API, so they stream in behind Suspense. */}
+              <Suspense fallback={<aside className="hidden w-60 shrink-0 md:block" />}>
+                <Sidebar />
+              </Suspense>
+              <main className="min-w-0 flex-1">{children}</main>
+            </div>
+            <Suspense fallback={<aside className="hidden w-72 shrink-0 xl:block" />}>
               <RightRail />
             </Suspense>
           </div>
 
-          <footer className="border-t border-line">
-            <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-5 text-xs text-muted">
+          {/* Fixed height: the sidebar's sticky box is sized against it (see components/Sidebar.tsx). */}
+          <footer className="mt-auto h-14 border-t border-line">
+            <div className="mx-auto flex h-full max-w-7xl flex-wrap items-center justify-between gap-3 px-4 text-xs text-muted">
               <p>© AuditProRx. Community forum for independent pharmacies.</p>
               <nav className="flex gap-4">
                 <a href="https://www.auditprorx.com" target="_blank" rel="noreferrer" className="hover:text-fg">

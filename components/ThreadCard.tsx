@@ -1,13 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore, type FormEvent } from "react";
 import Link from "next/link";
 import { ArrowBigDown, ArrowBigUp, BadgeCheck, ChevronDown, Eye, Loader2, Lock, MessageSquare, Pin } from "lucide-react";
 import Avatar from "./Avatar";
 import ImageLightbox from "./ImageLightbox";
 import { SignInButton } from "./SignInDialog";
-import { getComments } from "@/lib/api";
+import { getComments, voteThread } from "@/lib/api";
+import { addComment, useLocalComments, useMember, usePrototypeThread } from "@/lib/member";
+import { isPrototypeId } from "@/lib/member-mock";
 import { ROLE_LABEL, type Comment, type ThreadRow } from "@/lib/types";
+import { getLocalVote, setLocalVote, subscribeVotes, type VoteValue } from "@/lib/votes";
 import { compact, cx, timeAgo } from "@/lib/utils";
 
 /** One thread as a card: author line, title, excerpt, optional image, votes, and comments that expand in place. */
@@ -15,9 +18,24 @@ export default function ThreadCard({ thread }: { thread: ThreadRow }) {
   const [open, setOpen] = useState(false);
   const [comments, setComments] = useState<Comment[] | null>(null); // null = not loaded yet
   const [loading, setLoading] = useState(false);
+  const [reply, setReply] = useState("");
+  const member = useMember();
+  const mine = useLocalComments(thread.id); // the member's own replies, kept in this browser
+  const prototype = usePrototypeThread(thread.id);
+  const shown = [...(comments ?? []), ...mine];
+  const commentCount = thread.commentCount + mine.length;
+
+  function submitReply(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!reply.trim()) return;
+    addComment(thread.id, reply);
+    setReply("");
+  }
 
   async function toggleComments() {
-    if (!open && comments === null) {
+    if (!open && comments === null && isPrototypeId(thread.id)) {
+      setComments(prototype?.comments ?? []); // sample and locally posted threads are not on the server
+    } else if (!open && comments === null) {
       setLoading(true);
       try {
         setComments(await getComments(thread.id));
@@ -78,7 +96,7 @@ export default function ThreadCard({ thread }: { thread: ThreadRow }) {
 
         {/* Actions */}
         <div className="mt-3 flex items-center gap-2 border-t border-line pt-3">
-          <VoteButtons score={thread.likeCount} />
+          <VoteButtons threadId={thread.id} score={thread.likeCount} />
           <button
             type="button"
             onClick={toggleComments}
@@ -86,7 +104,7 @@ export default function ThreadCard({ thread }: { thread: ThreadRow }) {
             className="btn-ghost h-7 gap-1.5 px-2 text-xs"
           >
             <MessageSquare size={14} />
-            {thread.commentCount} {thread.commentCount === 1 ? "comment" : "comments"}
+            {commentCount} {commentCount === 1 ? "comment" : "comments"}
             <ChevronDown size={13} className={cx("transition-transform", open && "rotate-180")} />
           </button>
           <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted tabular-nums">
@@ -102,9 +120,9 @@ export default function ThreadCard({ thread }: { thread: ThreadRow }) {
             <p className="flex items-center gap-2 text-xs text-muted">
               <Loader2 size={13} className="animate-spin" /> Loading comments…
             </p>
-          ) : comments && comments.length > 0 ? (
+          ) : shown.length > 0 ? (
             <ol className="space-y-3">
-              {comments.map((c) => (
+              {shown.map((c) => (
                 <li key={c.id} className="flex gap-2.5">
                   <Avatar username={c.author.username} size="sm" className="mt-0.5" />
                   <div className="min-w-0 flex-1">
@@ -126,10 +144,29 @@ export default function ThreadCard({ thread }: { thread: ThreadRow }) {
             <p className="text-xs text-muted">No comments yet.</p>
           )}
 
-          <div className="mt-3 flex items-center justify-between gap-3">
-            <p className="text-xs text-muted">{thread.isLocked ? "This thread is locked." : "Have an answer?"}</p>
-            {!thread.isLocked && <SignInButton className="btn-primary h-7 px-2.5 text-xs">Sign in to comment</SignInButton>}
-          </div>
+          {member && !thread.isLocked ? (
+            <form onSubmit={submitReply} className="mt-3 flex items-center gap-2">
+              <Avatar username={member.profile.username} size="sm" />
+              <input
+                value={reply}
+                onChange={(e) => setReply(e.target.value)}
+                placeholder="Write a comment"
+                aria-label="Write a comment"
+                maxLength={5000}
+                className="input h-8 min-w-0 flex-1 text-xs"
+              />
+              <button type="submit" disabled={!reply.trim()} className="btn-primary h-8 shrink-0 px-2.5 text-xs">
+                Comment
+              </button>
+            </form>
+          ) : (
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <p className="text-xs text-muted">{thread.isLocked ? "This thread is locked." : "Have an answer?"}</p>
+              {!thread.isLocked && (
+                <SignInButton className="btn-primary guest-only h-7 px-2.5 text-xs">Sign in to comment</SignInButton>
+              )}
+            </div>
+          )}
         </div>
       )}
     </article>
@@ -137,12 +174,36 @@ export default function ThreadCard({ thread }: { thread: ThreadRow }) {
 }
 
 /**
- * Up / score / down. Works without an account: the vote is kept on this device for the session.
- * Clicking the same arrow again removes the vote.
+ * Up / score / down. Works without an account: every click is recorded on the server under a
+ * random id this browser keeps, one vote per browser per thread. Clicking the same arrow again
+ * removes the vote. The arrow state is remembered on the device so it shows correctly on reload.
  */
-export function VoteButtons({ score }: { score: number }) {
-  const [vote, setVote] = useState<-1 | 0 | 1>(0);
-  const cast = (v: -1 | 1) => setVote((current) => (current === v ? 0 : v));
+export function VoteButtons({ threadId, score: initialScore }: { threadId: string; score: number }) {
+  // This browser's vote lives in device storage; 0 on the server render, then the stored value.
+  // The score from the server already includes this browser's earlier vote, if any.
+  const vote = useSyncExternalStore(subscribeVotes, () => getLocalVote(threadId), () => 0 as VoteValue);
+  const [score, setScore] = useState(initialScore);
+  const [busy, setBusy] = useState(false);
+
+  async function cast(next: 1 | -1) {
+    if (busy) return;
+    const value: VoteValue = vote === next ? 0 : next;
+    const before = { vote, score };
+    setLocalVote(threadId, value); // arrow updates right away
+    setScore(score + value - vote); // and so does the score
+    if (isPrototypeId(threadId)) return; // sample and locally posted threads are not on the server
+    setBusy(true);
+    try {
+      const result = await voteThread(threadId, value);
+      setScore(result.score);
+    } catch (err) {
+      console.error("Vote failed", err);
+      setLocalVote(threadId, before.vote);
+      setScore(before.score);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="inline-flex h-7 items-center rounded-md border border-line bg-surface">
@@ -158,7 +219,7 @@ export function VoteButtons({ score }: { score: number }) {
       >
         <ArrowBigUp size={16} fill={vote === 1 ? "currentColor" : "none"} />
       </button>
-      <span className="min-w-6 px-1 text-center text-xs font-semibold tabular-nums">{score + vote}</span>
+      <span className="min-w-6 px-1 text-center text-xs font-semibold tabular-nums">{score}</span>
       <button
         type="button"
         onClick={() => cast(-1)}

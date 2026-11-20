@@ -1,8 +1,10 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
+import PrototypeThread from "@/components/PrototypeThread";
 import ThreadView from "@/components/ThreadView";
 import { getThread } from "@/lib/api";
+import { isPrototypeId } from "@/lib/member-mock";
 
 export default function Page(props: PageProps<"/t/[id]">) {
   // params is request data, so the part that reads it streams in behind Suspense.
@@ -15,6 +17,8 @@ export default function Page(props: PageProps<"/t/[id]">) {
 
 async function Thread({ params }: { params: PageProps<"/t/[id]">["params"] }) {
   const { id } = await params;
+  // Member prototype: sample member threads and threads posted in this browser live in the browser only.
+  if (isPrototypeId(id)) return <PrototypeThread id={id} />;
   await connection(); // "5h ago" labels use the current time, so render this at request time
   const data = await getThread(id);
   if (!data) notFound();
@@ -23,6 +27,7 @@ async function Thread({ params }: { params: PageProps<"/t/[id]">["params"] }) {
 
 export async function generateMetadata(props: PageProps<"/t/[id]">) {
   const { id } = await props.params;
+  if (isPrototypeId(id)) return { title: "Thread" };
   const data = await getThread(id); // deduped with the page's call, see lib/api.ts
   return { title: data?.thread.title ?? "Thread not found" };
 }

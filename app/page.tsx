@@ -2,12 +2,13 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { connection } from "next/server";
 import FilterStrip from "@/components/FilterStrip";
-import Logo from "@/components/Logo";
 import LookupBox from "@/components/LookupBox";
-import { SignInButton } from "@/components/SignInDialog";
+import { HomeIntro, LocalPosts } from "@/components/MemberBits";
+import MemberCategory from "@/components/MemberCategory";
 import ThreadList from "@/components/ThreadList";
 import { getCategories, getThreads } from "@/lib/api";
 import type { Tab, ThreadQuery } from "@/lib/types";
+import { isMemberCategory } from "@/lib/member-mock";
 import { homeHref } from "@/lib/utils";
 
 export default function Page(props: PageProps<"/">) {
@@ -22,6 +23,15 @@ export default function Page(props: PageProps<"/">) {
 async function Home({ searchParams }: { searchParams: PageProps<"/">["searchParams"] }) {
   const query = parseQuery(await searchParams);
   await connection(); // "5h ago" labels use the current time, so render this at request time
+  if (isMemberCategory(query.category)) {
+    // How To and Announcements are for members. Prototype: sample threads, shown only when signed in.
+    return (
+      <div className="space-y-3">
+        <FilterStrip query={query} categories={await getCategories()} />
+        <MemberCategory slug={query.category!} />
+      </div>
+    );
+  }
   const [categories, threads] = await Promise.all([getCategories(), getThreads(query)]);
   const isHome = !query.category && !query.q; // the welcome card and lookup show here only
 
@@ -30,17 +40,7 @@ async function Home({ searchParams }: { searchParams: PageProps<"/">["searchPara
       {isHome && (
         /* Two cards, one row: community on the left, payer lookup on the right. Stacked below laptop width. */
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">
-          <section className="card flex items-start gap-3 p-3.5">
-            <Logo size={32} className="hidden sm:block" />
-            <div className="min-w-0 flex-1">
-              <h1 className="text-sm font-semibold tracking-tight">AuditProRx Community</h1>
-              <p className="mt-0.5 text-xs leading-5 text-muted">
-                Independent pharmacies comparing notes on PBM audits, claim rejections, wholesaler invoices, and
-                compliance. Read freely, sign in to join.
-              </p>
-              <SignInButton className="btn-primary mt-2.5 h-7 px-2.5 text-xs">Join the community</SignInButton>
-            </div>
-          </section>
+          <HomeIntro />
           <LookupBox />
         </div>
       )}
@@ -57,6 +57,9 @@ async function Home({ searchParams }: { searchParams: PageProps<"/">["searchPara
           </Link>
         </p>
       )}
+
+      {/* Prototype: threads the member posted in this browser, newest first, above the live list. */}
+      {query.tab === "latest" && query.page === 1 && !query.q && <LocalPosts category={query.category} />}
 
       {threads.items.length > 0 ? (
         <ThreadList page={threads} query={query} />
