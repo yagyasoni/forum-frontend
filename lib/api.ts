@@ -95,7 +95,27 @@ export async function getThreads(query: ThreadQuery): Promise<ThreadPage> {
 // share a single fetch and the backend counts one view, not two.
 export const getThread = cache(async (id: string): Promise<ThreadDetail | null> => {
   if (USE_MOCK) return mock.thread(id);
-  return get<ThreadDetail>(`/api/threads/${id}`);
+
+  // Forward the forum_session cookie so the backend knows who is requesting
+  // (needed for likedByMe, savedByMe etc.). cookies() is only available server-side.
+  let cookieHeader: string | undefined;
+  if (typeof window === "undefined") {
+    try {
+      const { cookies } = await import("next/headers");
+      const store = await cookies();
+      const session = store.get("forum_session");
+      if (session) cookieHeader = `forum_session=${session.value}`;
+    } catch { /* not in a request context */ }
+  }
+
+  const url = new URL(`${BASE!.replace(/\/+$/, "")}/api/threads/${id}`);
+  const res = await fetch(url, {
+    cache: "no-store",
+    headers: cookieHeader ? { Cookie: cookieHeader } : {},
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText} for /api/threads/${id}`);
+  return res.json();
 });
 
 /** Comments only, for expanding them on a card. Unlike getThread this does not count a view. */
@@ -159,6 +179,12 @@ export async function signOut(): Promise<void> {
 export async function putProfile(username: string, role: string, favoriteCategoryIds: string[]): Promise<void> {
   if (USE_MOCK) return;
   await put("/api/me/profile", { username, role, favoriteCategoryIds });
+}
+
+export async function likeComment(threadId: string, commentId: string): Promise<{ likeCount: number }> {
+  if (USE_MOCK) return { likeCount: 0 };
+  const data = await put<{ likeCount: number }>(`/api/threads/${threadId}/comments/${commentId}/like`, {});
+  return data ?? { likeCount: 0 };
 }
 
 export async function putSave(threadId: string, saved: boolean): Promise<void> {

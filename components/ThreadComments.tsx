@@ -7,6 +7,7 @@ import Avatar from "./Avatar";
 import AuthorLine from "./AuthorLine";
 import { SignInButton, useSignIn } from "./SignInDialog";
 import { addComment, useLocalComments, useMember } from "@/lib/member";
+import { likeComment } from "@/lib/api";
 import type { Comment } from "@/lib/types";
 import { cx, timeAgo } from "@/lib/utils";
 
@@ -29,18 +30,43 @@ export default function ThreadComments({
   const member = useMember();
   const signIn = useSignIn();
   const [optimistic, setOptimistic] = useState<Comment[]>([]);
-  const [liked, setLiked] = useState<string[]>([]);
+  const [liked, setLiked] = useState<Set<string>>(new Set());
+  const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   // Clear optimistic comments once the server refresh brings them in.
   useEffect(() => { setOptimistic([]); }, [fromServer.length]);
 
+  // Seed liked state from server data (restores state after page refresh).
+  // Key on the actual likedByMe values so the effect only runs when server data changes,
+  // not on every render. Only ADD from server — never remove — to avoid fighting optimistic updates.
+  const serverLikedKey = fromServer.map((c) => `${c.id}:${c.likedByMe ? 1 : 0}`).join(",");
+  useEffect(() => {
+    setLiked((prev) => {
+      const next = new Set(prev);
+      for (const c of fromServer) {
+        if (c.likedByMe) next.add(c.id);
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverLikedKey]);
+
   const comments = [...fromServer, ...useLocalComments(threadId), ...optimistic];
 
-  function like(id: string) {
+  async function like(id: string) {
     if (!member) return signIn();
-    setLiked((list) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]));
+    const isLiked = liked.has(id);
+    // Optimistic update
+    setLiked((prev) => { const s = new Set(prev); isLiked ? s.delete(id) : s.add(id); return s; });
+    try {
+      const { likeCount } = await likeComment(threadId, id);
+      setLikeCounts((prev) => ({ ...prev, [id]: likeCount }));
+    } catch {
+      // Revert on error
+      setLiked((prev) => { const s = new Set(prev); isLiked ? s.add(id) : s.delete(id); return s; });
+    }
   }
 
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -78,7 +104,8 @@ export default function ThreadComments({
       {comments.length > 0 && (
         <ol className="card divide-y divide-line">
           {comments.map((c) => {
-            const isLiked = liked.includes(c.id) && !!member;
+            const isLiked = liked.has(c.id) && !!member;
+            const displayCount = likeCounts[c.id] ?? c.likeCount;
             return (
               <li key={c.id} className="flex gap-3 p-4 sm:p-5">
                 <Avatar username={c.author.username} size="sm" className="mt-0.5" />
@@ -106,7 +133,7 @@ export default function ThreadComments({
                       isLiked ? "text-rose-600 hover:text-rose-600 dark:text-rose-400" : "text-muted",
                     )}
                   >
-                    <Heart size={13} fill={isLiked ? "currentColor" : "none"} /> {c.likeCount + (isLiked ? 1 : 0)}
+                    <Heart size={13} fill={isLiked ? "currentColor" : "none"} /> {displayCount}
                   </button>
                 </div>
               </li>
