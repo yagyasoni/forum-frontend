@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Always reserve scrollbar gutter so the layout never shifts when navigating between pages. */
+html {
+  scrollbar-gutter: stable;
+}
+
 /* Color tokens. Light by default, dark follows the system setting. */
 :root {
   --bg: #f7f7f8;

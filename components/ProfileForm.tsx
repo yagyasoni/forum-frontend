@@ -18,7 +18,7 @@ export default function ProfileForm({
 }: {
   initial?: Profile;
   submitLabel: string;
-  onSubmit: (profile: Profile) => void;
+  onSubmit: (profile: Profile) => void | Promise<void>;
 }) {
   const [username, setUsername] = useState(initial?.username ?? "");
   const [role, setRole] = useState<Role>(initial?.role ?? "owner");

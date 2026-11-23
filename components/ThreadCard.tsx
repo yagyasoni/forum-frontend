@@ -17,24 +17,42 @@ import { compact, cx, timeAgo } from "@/lib/utils";
 export default function ThreadCard({ thread }: { thread: ThreadRow }) {
   const [open, setOpen] = useState(false);
   const [comments, setComments] = useState<Comment[] | null>(null); // null = not loaded yet
+  const [optimistic, setOptimistic] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [reply, setReply] = useState("");
   const member = useMember();
-  const mine = useLocalComments(thread.id); // the member's own replies, kept in this browser
+  const mine = useLocalComments(thread.id);
   const prototype = usePrototypeThread(thread.id);
-  const shown = [...(comments ?? []), ...mine];
-  const commentCount = thread.commentCount + mine.length;
+  const shown = [...(comments ?? []), ...mine, ...optimistic];
+  const commentCount = thread.commentCount + mine.length + optimistic.length;
 
-  function submitReply(e: FormEvent<HTMLFormElement>) {
+  async function submitReply(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!reply.trim()) return;
-    addComment(thread.id, reply);
+    if (!reply.trim() || submitting || !member) return;
+    const trimmed = reply.trim();
     setReply("");
+    setSubmitting(true);
+    setOptimistic((prev) => [
+      ...prev,
+      {
+        id: `opt-${Date.now()}`,
+        author: { username: member.profile.username, role: member.profile.role, verified: member.verified },
+        body: trimmed.split(/\n{2,}/).map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`).join(""),
+        likeCount: 0,
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+    try {
+      await addComment(thread.id, trimmed);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   async function toggleComments() {
     if (!open && comments === null && isPrototypeId(thread.id)) {
-      setComments(prototype?.comments ?? []); // sample and locally posted threads are not on the server
+      setComments([]); // prototype threads are no longer local; real threads load from server
     } else if (!open && comments === null) {
       setLoading(true);
       try {
@@ -121,7 +139,7 @@ export default function ThreadCard({ thread }: { thread: ThreadRow }) {
               <Loader2 size={13} className="animate-spin" /> Loading comments…
             </p>
           ) : shown.length > 0 ? (
-            <ol className="space-y-3">
+            <ol className="max-h-72 space-y-3 overflow-y-auto [scrollbar-width:thin] [scrollbar-color:var(--color-line)_transparent]">
               {shown.map((c) => (
                 <li key={c.id} className="flex gap-2.5">
                   <Avatar username={c.author.username} size="sm" className="mt-0.5" />
@@ -135,7 +153,7 @@ export default function ThreadCard({ thread }: { thread: ThreadRow }) {
                       </time>
                     </p>
                     {/* Comment bodies are sanitized HTML from the backend. */}
-                    <div className="post-body mt-0.5 text-sm leading-6" dangerouslySetInnerHTML={{ __html: c.body }} />
+                    <div className="post-body mt-0.5 text-sm leading-6 break-words" dangerouslySetInnerHTML={{ __html: c.body }} />
                   </div>
                 </li>
               ))}
@@ -155,7 +173,8 @@ export default function ThreadCard({ thread }: { thread: ThreadRow }) {
                 maxLength={5000}
                 className="input h-8 min-w-0 flex-1 text-xs"
               />
-              <button type="submit" disabled={!reply.trim()} className="btn-primary h-8 shrink-0 px-2.5 text-xs">
+              <button type="submit" disabled={!reply.trim() || submitting} className="btn-primary inline-flex h-8 shrink-0 items-center gap-1.5 px-2.5 text-xs">
+                {submitting && <Loader2 size={11} className="animate-spin" />}
                 Comment
               </button>
             </form>

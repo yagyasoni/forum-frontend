@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { Heart, MessageSquare } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
+import { Heart, Loader2, MessageSquare } from "lucide-react";
 import Avatar from "./Avatar";
 import AuthorLine from "./AuthorLine";
 import { SignInButton, useSignIn } from "./SignInDialog";
@@ -24,22 +25,47 @@ export default function ThreadComments({
   isLocked: boolean;
   comments: Comment[];
 }) {
+  const router = useRouter();
   const member = useMember();
   const signIn = useSignIn();
-  const comments = [...fromServer, ...useLocalComments(threadId)];
+  const [optimistic, setOptimistic] = useState<Comment[]>([]);
   const [liked, setLiked] = useState<string[]>([]);
   const [text, setText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  // Clear optimistic comments once the server refresh brings them in.
+  useEffect(() => { setOptimistic([]); }, [fromServer.length]);
+
+  const comments = [...fromServer, ...useLocalComments(threadId), ...optimistic];
 
   function like(id: string) {
     if (!member) return signIn();
     setLiked((list) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]));
   }
 
-  function submit(e: FormEvent<HTMLFormElement>) {
+  async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!text.trim()) return;
-    addComment(threadId, text);
+    if (!text.trim() || submitting || !member) return;
+    const trimmed = text.trim();
     setText("");
+    setSubmitting(true);
+    // Show comment immediately without waiting for server refresh.
+    setOptimistic((prev) => [
+      ...prev,
+      {
+        id: `opt-${Date.now()}`,
+        author: { username: member.profile.username, role: member.profile.role, verified: member.verified },
+        body: trimmed.split(/\n{2,}/).map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`).join(""),
+        likeCount: 0,
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+    try {
+      await addComment(threadId, trimmed);
+      router.refresh();
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -69,7 +95,7 @@ export default function ThreadComments({
                       {timeAgo(c.createdAt)}
                     </time>
                   </div>
-                  <div className="post-body mt-1.5 text-sm leading-6" dangerouslySetInnerHTML={{ __html: c.body }} />
+                  <div className="post-body mt-1.5 text-sm leading-6 break-words" dangerouslySetInnerHTML={{ __html: c.body }} />
                   <button
                     type="button"
                     onClick={() => like(c.id)}
@@ -105,7 +131,8 @@ export default function ThreadComments({
             />
             <div className="mt-2 flex items-center justify-between gap-3">
               <p className="text-xs text-muted">Never include patient names or prescription numbers.</p>
-              <button type="submit" disabled={!text.trim()} className="btn-primary h-8 shrink-0 px-3 text-xs">
+              <button type="submit" disabled={!text.trim() || submitting} className="btn-primary inline-flex h-8 shrink-0 items-center gap-1.5 px-3 text-xs">
+                {submitting && <Loader2 size={12} className="animate-spin" />}
                 Reply
               </button>
             </div>

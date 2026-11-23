@@ -65,12 +65,12 @@ export function HomeIntro() {
 /** Threads the member posted in this browser, shown above the live list on the first page. */
 export function LocalPosts({ category }: { category?: string }) {
   const member = useMember();
-  const posts = usePosts().filter((p) => !category || p.thread.category.slug === category);
+  const posts = usePosts().filter((p) => !category || p.category.slug === category);
   if (!member || posts.length === 0) return null;
   return (
     <div className="space-y-3">
       {posts.map((p) => (
-        <ThreadCard key={p.thread.id} thread={p.thread} />
+        <ThreadCard key={p.id} thread={p} />
       ))}
     </div>
   );
@@ -91,13 +91,17 @@ export function PostCta({ className }: { className?: string }) {
 export function SaveButton({ thread, className }: { thread: ThreadRow; className?: string }) {
   const member = useMember();
   const signIn = useSignIn();
-  const isSaved = useSaved().some((t) => t.id === thread.id) && !!member;
+  const serverSaved = useSaved().some((t) => t.id === thread.id) && !!member;
+  const [optimistic, setOptimistic] = useState<boolean | null>(null);
+  const isSaved = optimistic !== null ? optimistic : serverSaved;
 
   function save() {
     if (!member) return signIn();
+    const next = !isSaved;
+    setOptimistic(next);
     const row = { ...thread } as ThreadRow & { body?: string };
-    delete row.body; // the saved list only needs the card fields
-    toggleSaved(row);
+    delete row.body;
+    toggleSaved(row, isSaved);
   }
 
   return (
