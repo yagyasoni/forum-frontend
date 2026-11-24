@@ -18,11 +18,11 @@ export default function ProfileForm({
 }: {
   initial?: Profile;
   submitLabel: string;
-  onSubmit: (profile: Profile) => void;
+  onSubmit: (profile: Profile) => void | Promise<void>;
 }) {
   const [username, setUsername] = useState(initial?.username ?? "");
   const [role, setRole] = useState<Role>(initial?.role ?? "owner");
-  const [favorites, setFavorites] = useState<string[]>(initial?.favoriteCategorySlugs ?? []);
+  const [favorites, setFavorites] = useState<string[]>(initial?.favoriteCategoryIds ?? []);
   const [categories, setCategories] = useState<Category[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,7 +43,7 @@ export default function ProfileForm({
       setError("Use 3 to 20 letters, numbers, or underscores.");
       return;
     }
-    onSubmit({ username: name, role, favoriteCategorySlugs: favorites });
+    onSubmit({ username: name, role, favoriteCategoryIds: favorites });
   }
 
   const toggle = (slug: string) =>
@@ -87,12 +87,12 @@ export default function ProfileForm({
           </legend>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             {categories.map((c) => {
-              const on = favorites.includes(c.slug);
+              const on = favorites.includes(c.id); // favorites are stored as category ids
               return (
                 <button
                   key={c.slug}
                   type="button"
-                  onClick={() => toggle(c.slug)}
+                  onClick={() => toggle(c.id)}
                   aria-pressed={on}
                   className={cx(
                     "inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border px-2 text-xs font-medium transition-colors",

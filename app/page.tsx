@@ -3,7 +3,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 import FilterStrip from "@/components/FilterStrip";
 import LookupBox from "@/components/LookupBox";
-import { HomeIntro, LocalPosts } from "@/components/MemberBits";
+import { HomeIntro } from "@/components/MemberBits";
 import MemberCategory from "@/components/MemberCategory";
 import ThreadList from "@/components/ThreadList";
 import { getCategories, getThreads } from "@/lib/api";
@@ -57,9 +57,6 @@ async function Home({ searchParams }: { searchParams: PageProps<"/">["searchPara
           </Link>
         </p>
       )}
-
-      {/* Prototype: threads the member posted in this browser, newest first, above the live list. */}
-      {query.tab === "latest" && query.page === 1 && !query.q && <LocalPosts category={query.category} />}
 
       {threads.items.length > 0 ? (
         <ThreadList page={threads} query={query} />

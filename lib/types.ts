@@ -48,6 +48,7 @@ export type Comment = {
   author: Author;
   body: string; // sanitized HTML
   likeCount: number;
+  likedByMe?: boolean;
   createdAt: string;
 };
 

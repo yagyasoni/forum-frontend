@@ -33,3 +33,21 @@ export function homeHref(query: Partial<ThreadQuery>) {
   const qs = params.toString();
   return qs ? `/?${qs}` : "/";
 }
+
+/** Plain text from a textarea as the simple, escaped HTML the comment lists render. */
+export function textToHtml(text: string) {
+  const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return text
+    .split(/\n{2,}/)
+    .map((p) => `<p>${escape(p).replace(/\n/g, "<br>")}</p>`)
+    .join("");
+}
+
+/** What to tell a member when a post or comment is refused. */
+export function writeErrorMessage(err: unknown) {
+  const code = err instanceof Error ? err.message : "";
+  if (code === "profanity") return "Please remove the inappropriate language and try again.";
+  if (code === "setup_required") return "Finish setting up your profile first.";
+  if (code === "Sign in required") return "Your session ended. Sign in again.";
+  return "That did not go through. Please try again.";
+}

@@ -1,48 +1,124 @@
 "use client";
 
 // One dialog for the whole app. Any button that needs an account calls open().
-// Member prototype: both options sign you in inside this browser only, no backend call.
-// Steps: choose a method -> (AuditProRx: email and password) -> first time only: profile setup.
+// Real auth: email/password via POST /api/auth/login; Google via POST /api/auth/google.
 
-import { createContext, useCallback, useContext, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { ArrowLeft, X } from "lucide-react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { ArrowLeft, Loader2, X } from "lucide-react";
 import Logo from "./Logo";
 import ProfileForm from "./ProfileForm";
-import { findProfile, signIn } from "@/lib/member";
+import { signInEmail, signInGoogle, putProfile } from "@/lib/api";
+import { useMemberRefresh } from "@/lib/member";
 
 const SignInContext = createContext<() => void>(() => {});
 
-/** Returns a function that opens the sign-in dialog. */
 export const useSignIn = () => useContext(SignInContext);
 
 type Step = "choose" | "password" | "setup";
 
-const GOOGLE_DEMO_EMAIL = "member@gmail.com"; // stands in for the account picked in Google's own window
-
-/** Wraps the app once in layout.tsx. Renders the dialog and provides open(). */
 export function SignInProvider({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const refresh = useMemberRefresh();
   const [step, setStep] = useState<Step>("choose");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const open = useCallback(() => ref.current?.showModal(), []);
-  const close = () => ref.current?.close();
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  /** The account is known. Returning members go straight in, new ones set up a profile first. */
-  function proceed(address: string) {
-    const profile = findProfile(address);
-    if (profile) {
-      signIn(address, profile);
-      close();
-    } else {
-      setEmail(address);
-      setStep("setup");
+  const open = useCallback(() => {
+    setStep("choose");
+    setEmail("");
+    setPassword("");
+    setError(null);
+    ref.current?.showModal();
+  }, []);
+
+  const close = useCallback(() => ref.current?.close(), []);
+
+  // Load Google Identity Services if a client ID is configured.
+  useEffect(() => {
+    if (!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID) return;
+    if (document.getElementById("gsi-script")) return;
+    const script = document.createElement("script");
+    script.id = "gsi-script";
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    document.head.appendChild(script);
+  }, []);
+
+  async function handleGoogleClick() {
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      setError("Google sign-in is not configured for this environment.");
+      return;
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const google = (window as any).google;
+    if (!google?.accounts?.id) {
+      setError("Google Identity Services failed to load. Please try again.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    let resetTimeout: ReturnType<typeof setTimeout>;
+    google.accounts.id.initialize({
+      client_id: clientId,
+      use_fedcm_for_prompt: false,
+      callback: async (response: { credential: string }) => {
+        clearTimeout(resetTimeout);
+        try {
+          const result = await signInGoogle(response.credential);
+          if (!result.hasProfile) {
+            setStep("setup");
+          } else {
+            refresh();
+            close();
+          }
+        } catch (err: unknown) {
+          setError(err instanceof Error ? err.message : "Google sign-in failed.");
+        } finally {
+          setSubmitting(false);
+        }
+      },
+    });
+
+    // renderButton renders an invisible button and programmatically clicks it,
+    // which opens the Google popup — the only flow that works on http://localhost.
+    const container = document.createElement("div");
+    container.style.display = "none";
+    document.body.appendChild(container);
+    google.accounts.id.renderButton(container, { type: "standard" });
+    const btn = container.querySelector("div[role=button]") as HTMLElement | null;
+    if (btn) {
+      btn.click();
+    } else {
+      google.accounts.id.prompt();
+    }
+    setTimeout(() => {
+      if (container.parentNode) document.body.removeChild(container);
+    }, 5000);
+
+    // Reset button after 2 minutes if user never completes sign-in (closed popup, etc).
+    resetTimeout = setTimeout(() => setSubmitting(false), 120000);
   }
 
-  function submitPassword(e: FormEvent<HTMLFormElement>) {
+  async function submitPassword(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    proceed(email.trim());
+    setSubmitting(true);
+    setError(null);
+    try {
+      const result = await signInEmail(email.trim(), password);
+      if (!result.hasProfile) {
+        setStep("setup");
+      } else {
+        refresh();
+        close();
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Invalid email or password.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -51,12 +127,13 @@ export function SignInProvider({ children }: { children: ReactNode }) {
       <dialog
         ref={ref}
         onClick={(e) => {
-          if (e.target === ref.current) close(); // click on the backdrop closes
+          if (e.target === ref.current) close();
         }}
         onClose={() => {
           setStep("choose");
           setEmail("");
           setPassword("");
+          setError(null);
         }}
         className="m-auto w-[min(92vw,420px)] rounded-2xl border border-line bg-surface p-0 text-fg shadow-2xl backdrop:bg-black/50"
       >
@@ -81,15 +158,24 @@ export function SignInProvider({ children }: { children: ReactNode }) {
               </p>
 
               <div className="mt-5 flex flex-col gap-2">
-                <button type="button" onClick={() => proceed(GOOGLE_DEMO_EMAIL)} className="btn-ghost h-10">
+                <button
+                  type="button"
+                  onClick={handleGoogleClick}
+                  disabled={submitting}
+                  className="btn-ghost h-10 inline-flex items-center justify-center gap-2"
+                >
+                  {submitting ? <Loader2 size={14} className="animate-spin" /> : null}
                   Continue with Google
                 </button>
-                <button type="button" onClick={() => setStep("password")} className="btn-primary h-10">
+                <button
+                  type="button"
+                  onClick={() => { setError(null); setStep("password"); }}
+                  className="btn-primary h-10"
+                >
                   Continue with AuditProRx
                 </button>
+                {error && <p className="text-center text-xs text-rose-600 dark:text-rose-400">{error}</p>}
               </div>
-
-              <p className="mt-4 text-center text-xs text-muted">Preview: sign-in works in this browser only.</p>
             </>
           )}
 
@@ -122,19 +208,19 @@ export function SignInProvider({ children }: { children: ReactNode }) {
                     className="input mt-1.5"
                   />
                 </label>
-                <button type="submit" className="btn-primary mt-1 h-10">
-                  Sign in
+                {error && <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
+                <button type="submit" disabled={submitting} className="btn-primary mt-1 h-10">
+                  {submitting ? "Signing in…" : "Sign in"}
                 </button>
               </form>
 
               <button
                 type="button"
-                onClick={() => setStep("choose")}
+                onClick={() => { setStep("choose"); setError(null); }}
                 className="mt-4 inline-flex cursor-pointer items-center gap-1 text-xs text-muted hover:text-fg"
               >
                 <ArrowLeft size={13} /> Other sign-in options
               </button>
-              <p className="mt-3 text-center text-xs text-muted">Preview: any email and password will sign you in.</p>
             </>
           )}
 
@@ -144,11 +230,17 @@ export function SignInProvider({ children }: { children: ReactNode }) {
               <p className="mt-1 mb-5 text-sm leading-6 text-muted">One time only. You can change these later.</p>
               <ProfileForm
                 submitLabel="Join the community"
-                onSubmit={(profile) => {
-                  signIn(email, profile);
-                  close();
+                onSubmit={async (profile) => {
+                  try {
+                    await putProfile(profile.username, profile.role, profile.favoriteCategoryIds);
+                    refresh();
+                    close();
+                  } catch (err: unknown) {
+                    setError(err instanceof Error ? err.message : "Could not save profile.");
+                  }
                 }}
               />
+              {error && <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{error}</p>}
             </>
           )}
         </div>
@@ -157,7 +249,6 @@ export function SignInProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/** A button that opens the sign-in dialog. Use it wherever an action needs an account. */
 export function SignInButton({ children, className }: { children: ReactNode; className?: string }) {
   const open = useSignIn();
   return (

@@ -6,6 +6,7 @@ import TopBar from "@/components/TopBar";
 import Sidebar from "@/components/Sidebar";
 import RightRail from "@/components/RightRail";
 import { SignInProvider } from "@/components/SignInDialog";
+import { MemberProvider } from "@/lib/member";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -26,11 +27,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="flex min-h-full flex-col bg-bg font-sans text-fg">
         {/* Member prototype: mark the page as signed-in before first paint (see .guest-only in globals.css). */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `try{if(localStorage.getItem("forum_member")&&localStorage.getItem("forum_member")!=="null")document.documentElement.dataset.member="1"}catch(e){}`,
-          }}
-        />
+        <MemberProvider>
         <SignInProvider>
           <TopBar />
 
@@ -71,6 +68,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             </div>
           </footer>
         </SignInProvider>
+        </MemberProvider>
       </body>
     </html>
   );

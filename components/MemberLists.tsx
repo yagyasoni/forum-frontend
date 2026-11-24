@@ -37,7 +37,7 @@ export function SavedThreads() {
 
 /** The My posts page. */
 export function MyThreads() {
-  const threads = usePosts().map((p) => p.thread);
+  const threads = usePosts();
   return <Threads threads={threads} empty="You have not posted yet" hint="Your threads will be listed here." />;
 }
 
@@ -70,8 +70,8 @@ export function ProfileCard() {
           key={member.email}
           initial={member.profile}
           submitLabel="Save changes"
-          onSubmit={(profile) => {
-            updateProfile(profile);
+          onSubmit={async (profile) => {
+            await updateProfile(profile);
             setSaved(true);
             setTimeout(() => setSaved(false), 2000);
           }}

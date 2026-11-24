@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { Heart, MessageSquare } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
+import { Heart, Loader2, MessageSquare } from "lucide-react";
 import Avatar from "./Avatar";
 import AuthorLine from "./AuthorLine";
 import { SignInButton, useSignIn } from "./SignInDialog";
 import { addComment, useLocalComments, useMember } from "@/lib/member";
+import { likeComment } from "@/lib/api";
 import type { Comment } from "@/lib/types";
-import { cx, timeAgo } from "@/lib/utils";
+import { cx, textToHtml, timeAgo, writeErrorMessage } from "@/lib/utils";
 
 /**
  * Comments under an open thread. Visitors see the sign-in prompt; members get a reply box and
@@ -24,22 +26,80 @@ export default function ThreadComments({
   isLocked: boolean;
   comments: Comment[];
 }) {
+  const router = useRouter();
   const member = useMember();
   const signIn = useSignIn();
-  const comments = [...fromServer, ...useLocalComments(threadId)];
-  const [liked, setLiked] = useState<string[]>([]);
+  const [optimistic, setOptimistic] = useState<Comment[]>([]);
+  const [liked, setLiked] = useState<Set<string>>(new Set());
+  const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
   const [text, setText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  function like(id: string) {
+  // Clear optimistic comments once the server refresh brings them in.
+  useEffect(() => { setOptimistic([]); }, [fromServer.length]);
+
+  // Seed liked state from server data (restores state after page refresh).
+  // Key on the actual likedByMe values so the effect only runs when server data changes,
+  // not on every render. Only ADD from server — never remove — to avoid fighting optimistic updates.
+  const serverLikedKey = fromServer.map((c) => `${c.id}:${c.likedByMe ? 1 : 0}`).join(",");
+  useEffect(() => {
+    setLiked((prev) => {
+      const next = new Set(prev);
+      for (const c of fromServer) {
+        if (c.likedByMe) next.add(c.id);
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverLikedKey]);
+
+  const comments = [...fromServer, ...useLocalComments(threadId), ...optimistic];
+
+  async function like(id: string) {
     if (!member) return signIn();
-    setLiked((list) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]));
+    const isLiked = liked.has(id);
+    // Optimistic update
+    setLiked((prev) => { const s = new Set(prev); isLiked ? s.delete(id) : s.add(id); return s; });
+    try {
+      const { likeCount } = await likeComment(threadId, id);
+      setLikeCounts((prev) => ({ ...prev, [id]: likeCount }));
+    } catch {
+      // Revert on error
+      setLiked((prev) => { const s = new Set(prev); isLiked ? s.add(id) : s.delete(id); return s; });
+    }
   }
 
-  function submit(e: FormEvent<HTMLFormElement>) {
+  async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!text.trim()) return;
-    addComment(threadId, text);
+    if (!text.trim() || submitting || !member) return;
+    const trimmed = text.trim();
     setText("");
+    setSubmitting(true);
+    setSubmitError(null);
+    // Show comment immediately without waiting for server refresh.
+    const optimisticId = `opt-${Date.now()}`;
+    setOptimistic((prev) => [
+      ...prev,
+      {
+        id: optimisticId,
+        author: { username: member.profile.username, role: member.profile.role, verified: member.verified },
+        body: textToHtml(trimmed),
+        likeCount: 0,
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+    try {
+      await addComment(threadId, trimmed);
+      router.refresh();
+    } catch (err) {
+      // The server refused it: take the comment back out and give the text back to the member.
+      setOptimistic((prev) => prev.filter((c) => c.id !== optimisticId));
+      setText(trimmed);
+      setSubmitError(writeErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -52,7 +112,8 @@ export default function ThreadComments({
       {comments.length > 0 && (
         <ol className="card divide-y divide-line">
           {comments.map((c) => {
-            const isLiked = liked.includes(c.id) && !!member;
+            const isLiked = liked.has(c.id) && !!member;
+            const displayCount = likeCounts[c.id] ?? c.likeCount;
             return (
               <li key={c.id} className="flex gap-3 p-4 sm:p-5">
                 <Avatar username={c.author.username} size="sm" className="mt-0.5" />
@@ -69,7 +130,7 @@ export default function ThreadComments({
                       {timeAgo(c.createdAt)}
                     </time>
                   </div>
-                  <div className="post-body mt-1.5 text-sm leading-6" dangerouslySetInnerHTML={{ __html: c.body }} />
+                  <div className="post-body mt-1.5 text-sm leading-6 break-words" dangerouslySetInnerHTML={{ __html: c.body }} />
                   <button
                     type="button"
                     onClick={() => like(c.id)}
@@ -80,7 +141,7 @@ export default function ThreadComments({
                       isLiked ? "text-rose-600 hover:text-rose-600 dark:text-rose-400" : "text-muted",
                     )}
                   >
-                    <Heart size={13} fill={isLiked ? "currentColor" : "none"} /> {c.likeCount + (isLiked ? 1 : 0)}
+                    <Heart size={13} fill={isLiked ? "currentColor" : "none"} /> {displayCount}
                   </button>
                 </div>
               </li>
@@ -104,8 +165,11 @@ export default function ThreadComments({
               className="input h-auto min-h-20 resize-y py-2 leading-6"
             />
             <div className="mt-2 flex items-center justify-between gap-3">
-              <p className="text-xs text-muted">Never include patient names or prescription numbers.</p>
-              <button type="submit" disabled={!text.trim()} className="btn-primary h-8 shrink-0 px-3 text-xs">
+              <p className={cx("text-xs", submitError ? "text-rose-600 dark:text-rose-400" : "text-muted")}>
+                {submitError ?? "Never include patient names or prescription numbers."}
+              </p>
+              <button type="submit" disabled={!text.trim() || submitting} className="btn-primary inline-flex h-8 shrink-0 items-center gap-1.5 px-3 text-xs">
+                {submitting && <Loader2 size={12} className="animate-spin" />}
                 Reply
               </button>
             </div>

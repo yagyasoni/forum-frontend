@@ -3,26 +3,27 @@
 import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ImagePlus, X } from "lucide-react";
+import { ImagePlus, Loader2, X } from "lucide-react";
 import { createPost } from "@/lib/member";
+import { uploadImage } from "@/lib/api";
 import { isMemberCategory } from "@/lib/member-mock";
 import type { Category } from "@/lib/types";
 
-const MAX_IMAGE_BYTES = 1_500_000; // the picture is kept in the browser for the prototype, so keep it small
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB — matches backend limit
 
-/** New post: category, title, body, optional image. Prototype: the post is kept in this browser. */
 export default function NewPostForm({ categories }: { categories: Category[] }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
-  // How To and Announcements are written by the AuditProRx team, not by members.
   const options = categories.filter((c) => !isMemberCategory(c.slug));
   const [category, setCategory] = useState("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
-  const [image, setImage] = useState<string | undefined>();
+  // imageFile = the raw File the user picked; imagePreview = local object URL for the preview
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | undefined>();
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  /** Change a field and clear the message from the last attempt. */
   function edit(set: (value: string) => void, value: string) {
     set(value);
     setError(null);
@@ -32,29 +33,50 @@ export default function NewPostForm({ categories }: { categories: Category[] }) 
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > MAX_IMAGE_BYTES) {
-      setError("That image is over 1.5 MB. Pick a smaller one.");
+      setError("That image is over 5 MB. Pick a smaller one.");
       e.target.value = "";
       return;
     }
     setError(null);
-    const reader = new FileReader();
-    reader.onload = () => setImage(String(reader.result));
-    reader.readAsDataURL(file);
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
   }
 
   function removeImage() {
-    setImage(undefined);
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImageFile(null);
+    setImagePreview(undefined);
     if (fileRef.current) fileRef.current.value = "";
   }
 
-  function submit(e: FormEvent<HTMLFormElement>) {
+  async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (submitting) return;
     const chosen = options.find((c) => c.slug === category);
     if (!chosen) return setError("Choose a category.");
     if (!title.trim()) return setError("Add a title.");
     if (!body.trim()) return setError("Write something in the body.");
-    const id = createPost({ category: { slug: chosen.slug, name: chosen.name }, title, body, imageUrl: image });
-    if (id) router.push(`/t/${id}`);
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      // Upload image to S3 first if one was picked.
+      let imageUrl: string | undefined;
+      if (imageFile) {
+        imageUrl = await uploadImage(imageFile);
+      }
+
+      const id = await createPost({ category: { slug: chosen.slug, name: chosen.name }, title, body, imageUrl });
+      if (id) {
+        setCategory(""); setTitle(""); setBody(""); removeImage();
+        router.refresh();
+        router.push(`/t/${id}`);
+      } else setError("Failed to post. Please try again.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to post. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -101,11 +123,11 @@ export default function NewPostForm({ categories }: { categories: Category[] }) 
         <span className="text-xs font-medium">
           Image <span className="font-normal text-muted">(optional)</span>
         </span>
-        <input ref={fileRef} type="file" accept="image/*" onChange={pickImage} className="sr-only" id="post-image" />
-        {image ? (
+        <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={pickImage} className="sr-only" id="post-image" />
+        {imagePreview ? (
           <div className="relative mt-1.5 overflow-hidden rounded-md border border-line">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={image} alt="" className="max-h-64 w-full object-contain" />
+            <img src={imagePreview} alt="" className="max-h-64 w-full object-contain" />
             <button
               type="button"
               onClick={removeImage}
@@ -131,8 +153,8 @@ export default function NewPostForm({ categories }: { categories: Category[] }) 
         <Link href="/" className="btn-ghost">
           Cancel
         </Link>
-        <button type="submit" className="btn-primary">
-          Post
+        <button type="submit" disabled={submitting} className="btn-primary inline-flex items-center gap-2">
+          {submitting ? <Loader2 size={14} className="animate-spin" /> : "Post"}
         </button>
       </div>
     </form>
