@@ -226,7 +226,8 @@ export async function postThread(
 export async function uploadImage(file: File): Promise<string> {
   if (USE_MOCK) return URL.createObjectURL(file);
 
-  const url = new URL("/api/upload/image", BASE);
+  // Concatenate, as everywhere else in this file: a leading-slash path would drop the /forum prefix.
+  const url = new URL(`${BASE!.replace(/\/+$/, "")}/api/upload/image`);
   const form = new FormData();
   form.append("image", file);
 

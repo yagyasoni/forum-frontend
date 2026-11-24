@@ -11,7 +11,7 @@ import { addComment, useLocalComments, useMember, usePrototypeThread } from "@/l
 import { isPrototypeId } from "@/lib/member-mock";
 import { ROLE_LABEL, type Comment, type ThreadRow } from "@/lib/types";
 import { getLocalVote, setLocalVote, subscribeVotes, type VoteValue } from "@/lib/votes";
-import { compact, cx, timeAgo } from "@/lib/utils";
+import { compact, cx, textToHtml, timeAgo, writeErrorMessage } from "@/lib/utils";
 
 /** One thread as a card: author line, title, excerpt, optional image, votes, and comments that expand in place. */
 export default function ThreadCard({ thread }: { thread: ThreadRow }) {
@@ -21,6 +21,7 @@ export default function ThreadCard({ thread }: { thread: ThreadRow }) {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [reply, setReply] = useState("");
+  const [replyError, setReplyError] = useState<string | null>(null);
   const member = useMember();
   const mine = useLocalComments(thread.id);
   const prototype = usePrototypeThread(thread.id);
@@ -33,18 +34,25 @@ export default function ThreadCard({ thread }: { thread: ThreadRow }) {
     const trimmed = reply.trim();
     setReply("");
     setSubmitting(true);
+    setReplyError(null);
+    const optimisticId = `opt-${Date.now()}`;
     setOptimistic((prev) => [
       ...prev,
       {
-        id: `opt-${Date.now()}`,
+        id: optimisticId,
         author: { username: member.profile.username, role: member.profile.role, verified: member.verified },
-        body: trimmed.split(/\n{2,}/).map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`).join(""),
+        body: textToHtml(trimmed),
         likeCount: 0,
         createdAt: new Date().toISOString(),
       },
     ]);
     try {
       await addComment(thread.id, trimmed);
+    } catch (err) {
+      // The server refused it: take the comment back out and give the text back to the member.
+      setOptimistic((prev) => prev.filter((c) => c.id !== optimisticId));
+      setReply(trimmed);
+      setReplyError(writeErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -163,7 +171,7 @@ export default function ThreadCard({ thread }: { thread: ThreadRow }) {
           )}
 
           {member && !thread.isLocked ? (
-            <form onSubmit={submitReply} className="mt-3 flex items-center gap-2">
+            <form onSubmit={submitReply} className="mt-3 flex flex-wrap items-center gap-2">
               <Avatar username={member.profile.username} size="sm" />
               <input
                 value={reply}
@@ -177,6 +185,7 @@ export default function ThreadCard({ thread }: { thread: ThreadRow }) {
                 {submitting && <Loader2 size={11} className="animate-spin" />}
                 Comment
               </button>
+              {replyError && <p className="w-full text-xs text-rose-600 dark:text-rose-400">{replyError}</p>}
             </form>
           ) : (
             <div className="mt-3 flex items-center justify-between gap-3">

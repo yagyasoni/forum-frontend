@@ -9,7 +9,7 @@ import { SignInButton, useSignIn } from "./SignInDialog";
 import { addComment, useLocalComments, useMember } from "@/lib/member";
 import { likeComment } from "@/lib/api";
 import type { Comment } from "@/lib/types";
-import { cx, timeAgo } from "@/lib/utils";
+import { cx, textToHtml, timeAgo, writeErrorMessage } from "@/lib/utils";
 
 /**
  * Comments under an open thread. Visitors see the sign-in prompt; members get a reply box and
@@ -34,6 +34,7 @@ export default function ThreadComments({
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Clear optimistic comments once the server refresh brings them in.
   useEffect(() => { setOptimistic([]); }, [fromServer.length]);
@@ -75,13 +76,15 @@ export default function ThreadComments({
     const trimmed = text.trim();
     setText("");
     setSubmitting(true);
+    setSubmitError(null);
     // Show comment immediately without waiting for server refresh.
+    const optimisticId = `opt-${Date.now()}`;
     setOptimistic((prev) => [
       ...prev,
       {
-        id: `opt-${Date.now()}`,
+        id: optimisticId,
         author: { username: member.profile.username, role: member.profile.role, verified: member.verified },
-        body: trimmed.split(/\n{2,}/).map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`).join(""),
+        body: textToHtml(trimmed),
         likeCount: 0,
         createdAt: new Date().toISOString(),
       },
@@ -89,6 +92,11 @@ export default function ThreadComments({
     try {
       await addComment(threadId, trimmed);
       router.refresh();
+    } catch (err) {
+      // The server refused it: take the comment back out and give the text back to the member.
+      setOptimistic((prev) => prev.filter((c) => c.id !== optimisticId));
+      setText(trimmed);
+      setSubmitError(writeErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -157,7 +165,9 @@ export default function ThreadComments({
               className="input h-auto min-h-20 resize-y py-2 leading-6"
             />
             <div className="mt-2 flex items-center justify-between gap-3">
-              <p className="text-xs text-muted">Never include patient names or prescription numbers.</p>
+              <p className={cx("text-xs", submitError ? "text-rose-600 dark:text-rose-400" : "text-muted")}>
+                {submitError ?? "Never include patient names or prescription numbers."}
+              </p>
               <button type="submit" disabled={!text.trim() || submitting} className="btn-primary inline-flex h-8 shrink-0 items-center gap-1.5 px-3 text-xs">
                 {submitting && <Loader2 size={12} className="animate-spin" />}
                 Reply

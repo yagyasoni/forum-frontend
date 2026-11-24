@@ -232,7 +232,7 @@ export function SignInProvider({ children }: { children: ReactNode }) {
                 submitLabel="Join the community"
                 onSubmit={async (profile) => {
                   try {
-                    await putProfile(profile.username, profile.role, profile.favoriteCategorySlugs);
+                    await putProfile(profile.username, profile.role, profile.favoriteCategoryIds);
                     refresh();
                     close();
                   } catch (err: unknown) {

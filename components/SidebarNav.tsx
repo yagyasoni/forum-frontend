@@ -14,7 +14,7 @@ const DOTS = ["bg-teal-500", "bg-sky-500", "bg-violet-500", "bg-amber-500", "bg-
 
 export default function SidebarNav({ categories: visitorCategories }: { categories: Category[] }) {
   const member = useMember();
-  const categories = member ? memberCategories(visitorCategories, member.profile.favoriteCategorySlugs) : visitorCategories;
+  const categories = member ? memberCategories(visitorCategories, member.profile.favoriteCategoryIds) : visitorCategories;
   const onHome = usePathname() === "/";
   const activeCategory = useSearchParams().get("category");
   const joinRef = useRef<HTMLDivElement>(null);
@@ -107,5 +107,5 @@ export default function SidebarNav({ categories: visitorCategories }: { categori
 /** What a member sees: favorites first, then the rest, then the members-only categories. */
 function memberCategories(visitorCategories: Category[], favorites: string[]) {
   const all = [...visitorCategories, ...MEMBER_CATEGORIES.filter((m) => !visitorCategories.some((c) => c.slug === m.slug))];
-  return [...all.filter((c) => favorites.includes(c.slug)), ...all.filter((c) => !favorites.includes(c.slug))];
+  return [...all.filter((c) => favorites.includes(c.id)), ...all.filter((c) => !favorites.includes(c.id))];
 }

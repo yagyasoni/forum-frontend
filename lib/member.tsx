@@ -25,7 +25,7 @@ import {
 } from "./api";
 import type { Comment, Role, ThreadRow } from "./types";
 
-export type Profile = { username: string; role: Role; favoriteCategorySlugs: string[] };
+export type Profile = { username: string; role: Role; favoriteCategoryIds: string[] };
 export type Member = { email: string; verified: boolean; profile: Profile };
 
 export type Notification = {
@@ -59,7 +59,7 @@ function mapToMember(raw: Awaited<ReturnType<typeof getMe>>): Member | null {
     profile: {
       username: raw.profile.username,
       role: raw.profile.role as Role,
-      favoriteCategorySlugs: raw.profile.favoriteCategoryIds,
+      favoriteCategoryIds: raw.profile.favoriteCategoryIds ?? [],
     },
   };
 }
@@ -219,7 +219,7 @@ export function markNotificationsRead(): void {}
 // ---- profile ---------------------------------------------------------------
 
 export async function updateProfile(profile: Profile): Promise<void> {
-  await putProfile(profile.username, profile.role, profile.favoriteCategorySlugs);
+  await putProfile(profile.username, profile.role, profile.favoriteCategoryIds);
 }
 
 // ---- demo stubs (AccountMenu uses these; safe to leave as no-ops) ----------
