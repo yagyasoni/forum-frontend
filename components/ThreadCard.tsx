@@ -7,26 +7,26 @@ import Avatar from "./Avatar";
 import ImageLightbox from "./ImageLightbox";
 import { SignInButton } from "./SignInDialog";
 import { getComments, voteThread } from "@/lib/api";
-import { addComment, useLocalComments, useMember, usePrototypeThread } from "@/lib/member";
+import { memberVotes, mergeComments, scores, uncountedComments, useStore } from "@/lib/live";
+import { addComment, useAddedComments, useMember } from "@/lib/member";
 import { isPrototypeId } from "@/lib/member-mock";
 import { ROLE_LABEL, type Comment, type ThreadRow } from "@/lib/types";
 import { getLocalVote, setLocalVote, subscribeVotes, type VoteValue } from "@/lib/votes";
-import { compact, cx, textToHtml, timeAgo, writeErrorMessage } from "@/lib/utils";
+import { compact, cx, timeAgo, writeErrorMessage } from "@/lib/utils";
 
 /** One thread as a card: author line, title, excerpt, optional image, votes, and comments that expand in place. */
 export default function ThreadCard({ thread }: { thread: ThreadRow }) {
   const [open, setOpen] = useState(false);
   const [comments, setComments] = useState<Comment[] | null>(null); // null = not loaded yet
-  const [optimistic, setOptimistic] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [reply, setReply] = useState("");
   const [replyError, setReplyError] = useState<string | null>(null);
   const member = useMember();
-  const mine = useLocalComments(thread.id);
-  const prototype = usePrototypeThread(thread.id);
-  const shown = [...(comments ?? []), ...mine, ...optimistic];
-  const commentCount = thread.commentCount + mine.length + optimistic.length;
+  // Comments this member added anywhere (this card or the thread page) show here at once.
+  const added = useAddedComments(thread.id);
+  const shown = mergeComments(comments ?? [], added);
+  const commentCount = thread.commentCount + uncountedComments(thread, added);
 
   async function submitReply(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -35,22 +35,9 @@ export default function ThreadCard({ thread }: { thread: ThreadRow }) {
     setReply("");
     setSubmitting(true);
     setReplyError(null);
-    const optimisticId = `opt-${Date.now()}`;
-    setOptimistic((prev) => [
-      ...prev,
-      {
-        id: optimisticId,
-        author: { username: member.profile.username, role: member.profile.role, verified: member.verified },
-        body: textToHtml(trimmed),
-        likeCount: 0,
-        createdAt: new Date().toISOString(),
-      },
-    ]);
     try {
-      await addComment(thread.id, trimmed);
+      await addComment(thread.id, trimmed); // shows immediately, one request, undone if refused
     } catch (err) {
-      // The server refused it: take the comment back out and give the text back to the member.
-      setOptimistic((prev) => prev.filter((c) => c.id !== optimisticId));
       setReply(trimmed);
       setReplyError(writeErrorMessage(err));
     } finally {
@@ -201,36 +188,58 @@ export default function ThreadCard({ thread }: { thread: ThreadRow }) {
   );
 }
 
+// One vote request per thread at a time. A click while one is on its way is not dropped: the
+// newest choice is remembered and sent as soon as the first one answers.
+type Confirmed = { vote: VoteValue; score: number };
+const voteQueue = new Map<string, { wanted: VoteValue; confirmed: Confirmed }>();
+
+async function sendVote(threadId: string, value: VoteValue, before: Confirmed, settle: (state: Confirmed) => void) {
+  const waiting = voteQueue.get(threadId);
+  if (waiting) {
+    waiting.wanted = value;
+    return;
+  }
+  const entry = { wanted: value, confirmed: before };
+  voteQueue.set(threadId, entry);
+  try {
+    let sent: VoteValue | undefined;
+    while (sent !== entry.wanted) {
+      sent = entry.wanted;
+      const result = await voteThread(threadId, sent);
+      entry.confirmed = { vote: sent, score: result.score };
+    }
+  } catch (err) {
+    console.error("Vote failed", err); // fall through: show the last state the server accepted
+  } finally {
+    voteQueue.delete(threadId);
+    settle(entry.confirmed);
+  }
+}
+
 /**
- * Up / score / down. Works without an account: every click is recorded on the server under a
- * random id this browser keeps, one vote per browser per thread. Clicking the same arrow again
- * removes the vote. The arrow state is remembered on the device so it shows correctly on reload.
+ * Up / score / down. Works without an account. Clicking the same arrow again removes the vote.
+ * A member's arrows come from their account (same on every device); a visitor's are remembered
+ * in this browser. The score is shared, so a card and the thread page always agree.
  */
 export function VoteButtons({ threadId, score: initialScore }: { threadId: string; score: number }) {
-  // This browser's vote lives in device storage; 0 on the server render, then the stored value.
-  // The score from the server already includes this browser's earlier vote, if any.
-  const vote = useSyncExternalStore(subscribeVotes, () => getLocalVote(threadId), () => 0 as VoteValue);
-  const [score, setScore] = useState(initialScore);
-  const [busy, setBusy] = useState(false);
+  const member = useMember();
+  const accountVotes = useStore(memberVotes, (v) => v, null);
+  const deviceVote = useSyncExternalStore(subscribeVotes, () => getLocalVote(threadId), () => 0 as VoteValue);
+  const onAccount = !!member && accountVotes !== null;
+  const vote: VoteValue = onAccount ? (accountVotes[threadId] ?? 0) : deviceVote;
+  const score = useStore(scores, (all) => all[threadId], undefined) ?? initialScore;
 
-  async function cast(next: 1 | -1) {
-    if (busy) return;
+  function show(state: Confirmed) {
+    if (onAccount) memberVotes.update((all) => ({ ...(all ?? {}), [threadId]: state.vote }));
+    else setLocalVote(threadId, state.vote);
+    scores.update((all) => ({ ...all, [threadId]: state.score }));
+  }
+
+  function cast(next: 1 | -1) {
     const value: VoteValue = vote === next ? 0 : next;
-    const before = { vote, score };
-    setLocalVote(threadId, value); // arrow updates right away
-    setScore(score + value - vote); // and so does the score
-    if (isPrototypeId(threadId)) return; // sample and locally posted threads are not on the server
-    setBusy(true);
-    try {
-      const result = await voteThread(threadId, value);
-      setScore(result.score);
-    } catch (err) {
-      console.error("Vote failed", err);
-      setLocalVote(threadId, before.vote);
-      setScore(before.score);
-    } finally {
-      setBusy(false);
-    }
+    show({ vote: value, score: score + value - vote }); // arrow and score change right away
+    if (isPrototypeId(threadId)) return; // sample threads are not on the server
+    sendVote(threadId, value, { vote, score }, show);
   }
 
   return (

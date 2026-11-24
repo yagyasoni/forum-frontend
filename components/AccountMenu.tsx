@@ -5,26 +5,18 @@ import Link from "next/link";
 import { Bell, Bookmark, ChevronDown, FileText, LogOut, Plus, UserRound } from "lucide-react";
 import Avatar from "./Avatar";
 import { SignInButton } from "./SignInDialog";
-import {
-  DEMO_REPLY_DELAY_MS,
-  addDemoReply,
-  markNotificationsRead,
-  pendingDemoReplies,
-  signOut,
-  useMember,
-  useNotifications,
-  usePosts,
-} from "@/lib/member";
+import { markNotificationsRead, openNotifications, signOut, useMember, useNotifications } from "@/lib/member";
 import { ROLE_LABEL } from "@/lib/types";
 import { cx, timeAgo } from "@/lib/utils";
 
 type Panel = "bell" | "account" | null;
 
-/** Right end of the top bar. Visitors get Sign in; members get New post, the bell, and their menu. */
+/** Right end of the top bar. Visitors get Sign in; members get Create post, the bell, and their menu. */
 export default function AccountMenu() {
   const member = useMember();
-  const notifications = useNotifications();
-  const posts = usePosts();
+  // The unread count arrives with the session; the list itself is only fetched when the bell opens.
+  const { unread, items } = useNotifications();
+  const notifications = items ?? [];
   const [panel, setPanel] = useState<Panel>(null);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -46,23 +38,18 @@ export default function AccountMenu() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panel]);
 
-  // Prototype only: a sample member replies a few seconds after you post, so the bell can be seen working.
-  useEffect(() => {
-    const timers = pendingDemoReplies().map((p) =>
-      setTimeout(() => addDemoReply(p.id), Math.max(0, Date.parse(p.createdAt) + DEMO_REPLY_DELAY_MS - Date.now())),
-    );
-    return () => timers.forEach(clearTimeout);
-  }, [posts]);
-
   if (!member) return <SignInButton className="btn-primary guest-only shrink-0">Sign in</SignInButton>;
-
-  const unread = notifications.filter((n) => !n.isRead).length;
 
   function close() {
     if (panel === "bell") markNotificationsRead(); // seen once the list has been opened and closed
     setPanel(null);
   }
-  const toggle = (next: Exclude<Panel, null>) => (panel === next ? close() : (close(), setPanel(next)));
+  function toggle(next: Exclude<Panel, null>) {
+    if (panel === next) return close();
+    close();
+    if (next === "bell") openNotifications();
+    setPanel(next);
+  }
 
   const panelClass =
     "card absolute top-full right-0 z-30 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden shadow-lg";
@@ -70,9 +57,9 @@ export default function AccountMenu() {
 
   return (
     <div ref={ref} className="relative flex shrink-0 items-center gap-1.5 sm:gap-2">
-      <Link href="/new" aria-label="New post" className="btn-primary px-2.5 sm:px-3.5">
+      <Link href="/new" aria-label="Create post" className="btn-primary px-2.5 sm:px-3.5">
         <Plus size={16} />
-        <span className="hidden sm:inline">New post</span>
+        <span className="hidden sm:inline">Create post</span>
       </Link>
 
       <button
@@ -105,7 +92,9 @@ export default function AccountMenu() {
       {panel === "bell" && (
         <div className={panelClass}>
           <p className="border-b border-line px-3 py-2 text-sm font-semibold">Notifications</p>
-          {notifications.length === 0 ? (
+          {items === null ? (
+            <p className="px-3 py-6 text-center text-xs text-muted">Loading…</p>
+          ) : notifications.length === 0 ? (
             <p className="px-3 py-6 text-center text-xs leading-5 text-muted">
               Nothing yet. You will see a note here when someone comments on your thread.
             </p>

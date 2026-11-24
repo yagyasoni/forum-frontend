@@ -10,7 +10,7 @@ import Avatar from "./Avatar";
 import Logo from "./Logo";
 import { SignInButton, useSignIn } from "./SignInDialog";
 import ThreadCard from "./ThreadCard";
-import { toggleSaved, useMember, usePosts, useSaved } from "@/lib/member";
+import { toggleSaved, useCreatedPosts, useMember, useMemberLoading, useSaved } from "@/lib/member";
 import type { ThreadRow } from "@/lib/types";
 import { cx } from "@/lib/utils";
 
@@ -62,10 +62,12 @@ export function HomeIntro() {
   );
 }
 
-/** Threads the member posted in this browser, shown above the live list on the first page. */
-export function LocalPosts({ category }: { category?: string }) {
+/** Threads the member posted during this visit that the list below does not include yet. */
+export function LocalPosts({ category, alreadyListed }: { category?: string; alreadyListed: string[] }) {
   const member = useMember();
-  const posts = usePosts().filter((p) => !category || p.category.slug === category);
+  const posts = useCreatedPosts().filter(
+    (p) => (!category || p.category.slug === category) && !alreadyListed.includes(p.id),
+  );
   if (!member || posts.length === 0) return null;
   return (
     <div className="space-y-3">
@@ -76,13 +78,13 @@ export function LocalPosts({ category }: { category?: string }) {
   );
 }
 
-/** Right rail button: "Sign in to post" for visitors, "New post" for members. */
+/** Right rail button: "Sign in to post" for visitors, "Create post" for members. */
 export function PostCta({ className }: { className?: string }) {
   const member = useMember();
   if (!member) return <SignInButton className={cx(className, "guest-only")}>Sign in to post</SignInButton>;
   return (
     <Link href="/new" className={className}>
-      New post
+      Create post
     </Link>
   );
 }
@@ -91,16 +93,13 @@ export function PostCta({ className }: { className?: string }) {
 export function SaveButton({ thread, className }: { thread: ThreadRow; className?: string }) {
   const member = useMember();
   const signIn = useSignIn();
-  const serverSaved = useSaved().some((t) => t.id === thread.id) && !!member;
-  const [optimistic, setOptimistic] = useState<boolean | null>(null);
-  const isSaved = optimistic !== null ? optimistic : serverSaved;
+  // The saved list is shared, so this button, the Saved page, and other cards always agree.
+  const isSaved = useSaved().some((t) => t.id === thread.id) && !!member;
 
   function save() {
     if (!member) return signIn();
-    const next = !isSaved;
-    setOptimistic(next);
     const row = { ...thread } as ThreadRow & { body?: string };
-    delete row.body;
+    delete row.body; // the saved list only needs the card fields
     toggleSaved(row, isSaved);
   }
 
@@ -176,12 +175,13 @@ export function ReportButton({ className }: { className?: string }) {
   );
 }
 
-/** Shown on member pages (New post, Saved, My posts, Profile) when nobody is signed in. */
+/** Shown on member pages (Create post, Saved, My posts, Profile) when nobody is signed in. */
 export function MembersOnly({ title, children }: { title: string; children: ReactNode }) {
   const member = useMember();
+  const checking = useMemberLoading(); // the session check has not answered yet
   const hydrated = useHydrated();
   if (member) return <>{children}</>;
-  if (!hydrated) return <div className="h-40 animate-pulse rounded-lg bg-line" />;
+  if (!hydrated || checking) return <div className="h-40 animate-pulse rounded-lg bg-line" />;
   return (
     <div className="card px-6 py-12 text-center">
       <p className="font-medium">{title}</p>

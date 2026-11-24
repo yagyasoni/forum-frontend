@@ -69,8 +69,7 @@ export default function NewPostForm({ categories }: { categories: Category[] }) 
       const id = await createPost({ category: { slug: chosen.slug, name: chosen.name }, title, body, imageUrl });
       if (id) {
         setCategory(""); setTitle(""); setBody(""); removeImage();
-        router.refresh();
-        router.push(`/t/${id}`);
+        router.push(`/t/${id}`); // Home and My posts already have the new thread from the shared store
       } else setError("Failed to post. Please try again.");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to post. Please try again.");

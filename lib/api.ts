@@ -121,36 +121,43 @@ export const getThread = cache(async (id: string): Promise<ThreadDetail | null> 
 /** Comments only, for expanding them on a card. Unlike getThread this does not count a view. */
 export async function getComments(threadId: string): Promise<Comment[]> {
   if (USE_MOCK) return mock.thread(threadId)?.comments ?? [];
-  const data = await get<{ items: Comment[] }>(`/api/threads/${threadId}/comments`);
+  // Sent with the login cookie so a member gets their own likes back (likedByMe).
+  const data = await authedGet<{ items: Comment[] }>(`/api/threads/${threadId}/comments`);
   return data?.items ?? [];
 }
 
 /**
- * Records this browser's vote on a thread (1 up, -1 down, 0 to remove) and returns the new score.
- * The server keeps one vote per browser per thread, so repeating a vote never counts twice.
+ * Records a vote on a thread (1 up, -1 down, 0 to remove) and returns the new score.
+ * The server keeps one vote per member (or per browser for visitors) per thread, so repeating a
+ * vote never counts twice. The caller owns what the arrows show; see VoteButtons.
  */
 export async function voteThread(threadId: string, value: VoteValue): Promise<{ score: number; myVote: VoteValue }> {
-  const { getVoterId, getLocalVote, setLocalVote } = await import("./votes");
   if (USE_MOCK) {
     const current = mock.thread(threadId)?.thread.likeCount ?? 0;
-    setLocalVote(threadId, value);
     return { score: current + value, myVote: value };
   }
+  const { getVoterId } = await import("./votes");
   const res = await fetch(`${BASE!.replace(/\/+$/, "")}/api/threads/${threadId}/vote`, {
     method: "PUT",
+    credentials: "include", // a member's vote is recorded on their account; visitors fall back to the device id
     headers: { "Content-Type": "application/json", "X-Forum-Voter": getVoterId() },
     body: JSON.stringify({ value }),
   });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText} for vote`);
-  const data = (await res.json()) as { score: number; myVote: VoteValue };
-  setLocalVote(threadId, data.myVote ?? getLocalVote(threadId));
-  return data;
+  return (await res.json()) as { score: number; myVote: VoteValue };
 }
 
 // ---- auth ------------------------------------------------------------------
 
 export type MeProfile = { username: string; role: string; favoriteCategoryIds: string[] };
-export type MeResponse = { id: string; email: string; verified: boolean; unread: number; profile: MeProfile | null };
+export type MeResponse = {
+  id: string;
+  email: string;
+  verified: boolean;
+  unread: number;
+  profile: MeProfile | null;
+  votes?: Record<string, VoteValue>; // thread id -> this member's vote
+};
 
 export async function getMe(): Promise<MeResponse | null> {
   if (USE_MOCK) {
@@ -159,15 +166,20 @@ export async function getMe(): Promise<MeResponse | null> {
   return authedGet<MeResponse>("/api/me");
 }
 
+/** This browser's visitor id. Sent at sign-in so votes cast before signing in move to the account. */
+async function deviceId(): Promise<string> {
+  return (await import("./votes")).getVoterId();
+}
+
 export async function signInEmail(email: string, password: string): Promise<{ id: string; hasProfile: boolean }> {
   if (USE_MOCK) return { id: "mock", hasProfile: true };
-  const data = await post<{ user: { id: string; hasProfile: boolean } }>("/api/auth/login", { email, password });
+  const data = await post<{ user: { id: string; hasProfile: boolean } }>("/api/auth/login", { email, password, deviceId: await deviceId() });
   return data.user;
 }
 
 export async function signInGoogle(idToken: string): Promise<{ id: string; hasProfile: boolean }> {
   if (USE_MOCK) return { id: "mock", hasProfile: true };
-  const data = await post<{ user: { id: string; hasProfile: boolean } }>("/api/auth/google", { idToken });
+  const data = await post<{ user: { id: string; hasProfile: boolean } }>("/api/auth/google", { idToken, deviceId: await deviceId() });
   return data.user;
 }
 
@@ -192,16 +204,25 @@ export async function putSave(threadId: string, saved: boolean): Promise<void> {
   await put(`/api/threads/${threadId}/save`, { saved });
 }
 
+/** A member list in full. These are loaded once per visit, so read every page (up to 5) in one go. */
+async function allPages(path: string): Promise<ThreadRow[]> {
+  const rows: ThreadRow[] = [];
+  for (let page = 1; page <= 5; page++) {
+    const data = await authedGet<{ items: ThreadRow[]; hasMore: boolean }>(`${path}?page=${page}`);
+    rows.push(...(data?.items ?? []));
+    if (!data?.hasMore) break;
+  }
+  return rows;
+}
+
 export async function getMeSaved(): Promise<ThreadRow[]> {
   if (USE_MOCK) return [];
-  const data = await authedGet<{ items: ThreadRow[] }>("/api/me/saved");
-  return data?.items ?? [];
+  return allPages("/api/me/saved");
 }
 
 export async function getMePosts(): Promise<ThreadRow[]> {
   if (USE_MOCK) return [];
-  const data = await authedGet<{ items: ThreadRow[] }>("/api/me/threads");
-  return data?.items ?? [];
+  return allPages("/api/me/threads");
 }
 
 export type ApiNotification = { id: string; threadId: string; threadTitle: string; actor: { username: string }; isRead: boolean; createdAt: string };

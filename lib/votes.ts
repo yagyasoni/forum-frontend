@@ -53,6 +53,12 @@ export function setLocalVote(threadId: string, value: VoteValue) {
   window.dispatchEvent(new Event(CHANGE_EVENT)); // every vote box on the page re-reads
 }
 
+/** Forget the arrows shown in this browser (used on sign-out: they were the member's votes). */
+export function clearLocalVotes() {
+  write(VOTES_KEY, "{}");
+  window.dispatchEvent(new Event(CHANGE_EVENT));
+}
+
 const CHANGE_EVENT = "forum-votes-change";
 
 /** For useSyncExternalStore: re-render when a vote changes here or in another tab. */

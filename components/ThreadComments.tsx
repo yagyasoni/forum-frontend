@@ -1,19 +1,18 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
-import { Heart, Loader2, MessageSquare } from "lucide-react";
+import { useState, type FormEvent } from "react";
+import { Loader2, MessageSquare, ThumbsUp } from "lucide-react";
 import Avatar from "./Avatar";
 import AuthorLine from "./AuthorLine";
 import { SignInButton, useSignIn } from "./SignInDialog";
-import { addComment, useLocalComments, useMember } from "@/lib/member";
-import { likeComment } from "@/lib/api";
+import { mergeComments } from "@/lib/live";
+import { addComment, toggleLike, useAddedComments, useLike, useMember } from "@/lib/member";
 import type { Comment } from "@/lib/types";
-import { cx, textToHtml, timeAgo, writeErrorMessage } from "@/lib/utils";
+import { cx, timeAgo, writeErrorMessage } from "@/lib/utils";
 
 /**
  * Comments under an open thread. Visitors see the sign-in prompt; members get a reply box and
- * can like a comment. Prototype: a member's replies and likes stay in this browser.
+ * can like a comment. Replies and likes show at once and are sent to the server in one request.
  */
 export default function ThreadComments({
   threadId,
@@ -26,49 +25,12 @@ export default function ThreadComments({
   isLocked: boolean;
   comments: Comment[];
 }) {
-  const router = useRouter();
   const member = useMember();
-  const signIn = useSignIn();
-  const [optimistic, setOptimistic] = useState<Comment[]>([]);
-  const [liked, setLiked] = useState<Set<string>>(new Set());
-  const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
+  // Server comments plus the ones this member added here or on a Home card, each shown once.
+  const comments = mergeComments(fromServer, useAddedComments(threadId));
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-
-  // Clear optimistic comments once the server refresh brings them in.
-  useEffect(() => { setOptimistic([]); }, [fromServer.length]);
-
-  // Seed liked state from server data (restores state after page refresh).
-  // Key on the actual likedByMe values so the effect only runs when server data changes,
-  // not on every render. Only ADD from server — never remove — to avoid fighting optimistic updates.
-  const serverLikedKey = fromServer.map((c) => `${c.id}:${c.likedByMe ? 1 : 0}`).join(",");
-  useEffect(() => {
-    setLiked((prev) => {
-      const next = new Set(prev);
-      for (const c of fromServer) {
-        if (c.likedByMe) next.add(c.id);
-      }
-      return next;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverLikedKey]);
-
-  const comments = [...fromServer, ...useLocalComments(threadId), ...optimistic];
-
-  async function like(id: string) {
-    if (!member) return signIn();
-    const isLiked = liked.has(id);
-    // Optimistic update
-    setLiked((prev) => { const s = new Set(prev); isLiked ? s.delete(id) : s.add(id); return s; });
-    try {
-      const { likeCount } = await likeComment(threadId, id);
-      setLikeCounts((prev) => ({ ...prev, [id]: likeCount }));
-    } catch {
-      // Revert on error
-      setLiked((prev) => { const s = new Set(prev); isLiked ? s.add(id) : s.delete(id); return s; });
-    }
-  }
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -77,24 +39,9 @@ export default function ThreadComments({
     setText("");
     setSubmitting(true);
     setSubmitError(null);
-    // Show comment immediately without waiting for server refresh.
-    const optimisticId = `opt-${Date.now()}`;
-    setOptimistic((prev) => [
-      ...prev,
-      {
-        id: optimisticId,
-        author: { username: member.profile.username, role: member.profile.role, verified: member.verified },
-        body: textToHtml(trimmed),
-        likeCount: 0,
-        createdAt: new Date().toISOString(),
-      },
-    ]);
     try {
-      await addComment(threadId, trimmed);
-      router.refresh();
+      await addComment(threadId, trimmed); // shows immediately, one request, undone if refused
     } catch (err) {
-      // The server refused it: take the comment back out and give the text back to the member.
-      setOptimistic((prev) => prev.filter((c) => c.id !== optimisticId));
       setText(trimmed);
       setSubmitError(writeErrorMessage(err));
     } finally {
@@ -111,42 +58,9 @@ export default function ThreadComments({
 
       {comments.length > 0 && (
         <ol className="card divide-y divide-line">
-          {comments.map((c) => {
-            const isLiked = liked.has(c.id) && !!member;
-            const displayCount = likeCounts[c.id] ?? c.likeCount;
-            return (
-              <li key={c.id} className="flex gap-3 p-4 sm:p-5">
-                <Avatar username={c.author.username} size="sm" className="mt-0.5" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-                    <AuthorLine author={c.author} />
-                    {c.author.username === opUsername && (
-                      <span className="rounded border border-line px-1.5 text-[10.5px] font-semibold text-muted uppercase">
-                        OP
-                      </span>
-                    )}
-                    <span aria-hidden className="text-muted">·</span>
-                    <time dateTime={c.createdAt} className="text-xs text-muted" suppressHydrationWarning>
-                      {timeAgo(c.createdAt)}
-                    </time>
-                  </div>
-                  <div className="post-body mt-1.5 text-sm leading-6 break-words" dangerouslySetInnerHTML={{ __html: c.body }} />
-                  <button
-                    type="button"
-                    onClick={() => like(c.id)}
-                    aria-pressed={isLiked}
-                    aria-label="Like"
-                    className={cx(
-                      "mt-2 inline-flex cursor-pointer items-center gap-1 text-xs hover:text-fg",
-                      isLiked ? "text-rose-600 hover:text-rose-600 dark:text-rose-400" : "text-muted",
-                    )}
-                  >
-                    <Heart size={13} fill={isLiked ? "currentColor" : "none"} /> {displayCount}
-                  </button>
-                </div>
-              </li>
-            );
-          })}
+          {comments.map((c) => (
+            <CommentItem key={c.id} threadId={threadId} comment={c} isOp={c.author.username === opUsername} />
+          ))}
         </ol>
       )}
 
@@ -191,5 +105,48 @@ export default function ThreadComments({
         </div>
       )}
     </section>
+  );
+}
+
+/** One comment with its like button. The like state is shared, so it survives moving between screens. */
+function CommentItem({ threadId, comment: c, isOp }: { threadId: string; comment: Comment; isOp: boolean }) {
+  const member = useMember();
+  const signIn = useSignIn();
+  const like = useLike(c);
+  const isLiked = like.liked && !!member;
+  const pending = c.id.startsWith("pending-"); // still on its way to the server
+
+  return (
+    <li className="flex gap-3 p-4 sm:p-5">
+      <Avatar username={c.author.username} size="sm" className="mt-0.5" />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+          <AuthorLine author={c.author} />
+          {isOp && (
+            <span className="rounded border border-line px-1.5 text-[10.5px] font-semibold text-muted uppercase">
+              OP
+            </span>
+          )}
+          <span aria-hidden className="text-muted">·</span>
+          <time dateTime={c.createdAt} className="text-xs text-muted" suppressHydrationWarning>
+            {timeAgo(c.createdAt)}
+          </time>
+        </div>
+        <div className="post-body mt-1.5 text-sm leading-6 break-words" dangerouslySetInnerHTML={{ __html: c.body }} />
+        <button
+          type="button"
+          onClick={() => (member ? toggleLike(threadId, c.id, like) : signIn())}
+          disabled={pending}
+          aria-pressed={isLiked}
+          aria-label="Like"
+          className={cx(
+            "mt-2 inline-flex cursor-pointer items-center gap-1 text-xs hover:text-fg",
+            isLiked ? "text-rose-600 hover:text-rose-600 dark:text-rose-400" : "text-muted",
+          )}
+        >
+          <ThumbsUp size={13} fill={isLiked ? "currentColor" : "none"} /> {like.count}
+        </button>
+      </div>
+    </li>
   );
 }

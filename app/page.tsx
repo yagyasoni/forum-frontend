@@ -3,7 +3,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 import FilterStrip from "@/components/FilterStrip";
 import LookupBox from "@/components/LookupBox";
-import { HomeIntro } from "@/components/MemberBits";
+import { HomeIntro, LocalPosts } from "@/components/MemberBits";
 import MemberCategory from "@/components/MemberCategory";
 import ThreadList from "@/components/ThreadList";
 import { getCategories, getThreads } from "@/lib/api";
@@ -56,6 +56,11 @@ async function Home({ searchParams }: { searchParams: PageProps<"/">["searchPara
             Clear search
           </Link>
         </p>
+      )}
+
+      {/* Threads the member posted since this list was loaded, so they show without a reload. */}
+      {query.tab === "latest" && query.page === 1 && !query.q && (
+        <LocalPosts category={query.category} alreadyListed={threads.items.map((t) => t.id)} />
       )}
 
       {threads.items.length > 0 ? (
