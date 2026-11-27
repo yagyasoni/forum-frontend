@@ -65,7 +65,7 @@ export default function ThreadComments({
       )}
 
       {member && !isLocked ? (
-        <form onSubmit={submit} className="card mt-3 flex gap-3 p-4">
+        <form onSubmit={submit} className="card mt-3 flex gap-3 p-3 sm:p-4">
           <span className="hidden sm:block">
             <Avatar username={member.profile.username} />
           </span>
@@ -78,11 +78,11 @@ export default function ThreadComments({
               maxLength={5000}
               className="input h-auto min-h-20 resize-y py-2 leading-6"
             />
-            <div className="mt-2 flex items-center justify-between gap-3">
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <p className={cx("text-xs", submitError ? "text-rose-600 dark:text-rose-400" : "text-muted")}>
                 {submitError ?? "Never include patient names or prescription numbers."}
               </p>
-              <button type="submit" disabled={!text.trim() || submitting} className="btn-primary inline-flex h-8 shrink-0 items-center gap-1.5 px-3 text-xs">
+              <button type="submit" disabled={!text.trim() || submitting} className="btn-primary inline-flex h-8 w-full shrink-0 items-center justify-center gap-1.5 px-3 text-xs sm:w-auto">
                 {submitting && <Loader2 size={12} className="animate-spin" />}
                 Reply
               </button>
@@ -117,7 +117,7 @@ function CommentItem({ threadId, comment: c, isOp }: { threadId: string; comment
   const pending = c.id.startsWith("pending-"); // still on its way to the server
 
   return (
-    <li className="flex gap-3 p-4 sm:p-5">
+    <li className="flex gap-2.5 p-3 sm:gap-3 sm:p-5">
       <Avatar username={c.author.username} size="sm" className="mt-0.5" />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
