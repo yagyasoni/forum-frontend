@@ -7,7 +7,10 @@ import type { Profile } from "@/lib/member";
 import { ROLE_LABEL, type Category, type Role } from "@/lib/types";
 import { cx } from "@/lib/utils";
 
-const ROLES = Object.keys(ROLE_LABEL) as Role[];
+// "other" is defined in lib/types.ts, but the backend only accepts it once the forum-members change
+// (forum-backend PR #3, migration 007_role_add_other) is deployed. Until then offering it would
+// make every save with that role fail, so it is left out of the list. Remove this filter after that deploy.
+const ROLES = (Object.keys(ROLE_LABEL) as Role[]).filter((r) => r !== "other");
 const USERNAME = /^[A-Za-z0-9_]{3,20}$/;
 const ANON = /^Anonymous_\d{6}$/;
 

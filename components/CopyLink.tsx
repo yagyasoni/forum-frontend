@@ -36,7 +36,7 @@ export default function CopyLink({ url, className }: { url?: string; className?:
   }
 
   return (
-    <button type="button" onClick={copy} className={className}>
+    <button type="button" onClick={copy} aria-label="Share" className={className}>
       {copied ? <Check size={14} /> : <Share2 size={14} />}
       <span className="hidden sm:inline">{copied ? "Copied!" : "Share"}</span>
     </button>

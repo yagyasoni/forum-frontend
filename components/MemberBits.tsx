@@ -104,7 +104,7 @@ export function SaveButton({ thread, className }: { thread: ThreadRow; className
   }
 
   return (
-    <button type="button" onClick={save} aria-pressed={isSaved} className={className}>
+    <button type="button" onClick={save} aria-pressed={isSaved} aria-label={isSaved ? "Saved" : "Save"} className={className}>
       <Bookmark size={14} fill={isSaved ? "currentColor" : "none"} />
       <span className="hidden sm:inline">{isSaved ? "Saved" : "Save"}</span>
     </button>
@@ -128,7 +128,7 @@ export function ReportButton({ className }: { className?: string }) {
 
   return (
     <>
-      <button type="button" onClick={() => (member ? ref.current?.showModal() : signIn())} className={className}>
+      <button type="button" onClick={() => (member ? ref.current?.showModal() : signIn())} aria-label="Report" className={className}>
         <Flag size={14} />
         <span className="hidden sm:inline">Report</span>
       </button>

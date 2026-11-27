@@ -45,6 +45,7 @@ export function MyThreads() {
 export function ProfileCard() {
   const member = useMember();
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   if (!member) return null;
 
   return (
@@ -71,11 +72,18 @@ export function ProfileCard() {
           initial={member.profile}
           submitLabel="Save changes"
           onSubmit={async (profile) => {
-            await updateProfile(profile);
-            setSaved(true);
-            setTimeout(() => setSaved(false), 2000);
+            setError(null);
+            try {
+              await updateProfile(profile);
+              setSaved(true);
+              setTimeout(() => setSaved(false), 2000);
+            } catch (err) {
+              // For example the username is already taken: say so instead of failing silently.
+              setError(err instanceof Error ? err.message : "Could not save your profile. Please try again.");
+            }
           }}
         />
+        {error && <p className="mt-3 text-xs text-rose-600 dark:text-rose-400">{error}</p>}
         {saved && (
           <p className="mt-3 flex items-center gap-1.5 text-xs text-accent">
             <Check size={14} /> Saved
