@@ -1,7 +1,9 @@
 import { MembersOnly, PageTitle } from "@/components/MemberBits";
 import { ProfileCard } from "@/components/MemberLists";
+import { NO_INDEX } from "@/lib/seo";
 
-export const metadata = { title: "Profile" };
+// Signed-in page: kept out of search results (also blocked in robots.txt).
+export const metadata = { title: "Profile", robots: NO_INDEX };
 
 export default function Page() {
   return (

@@ -60,6 +60,11 @@ export type NotificationItem = {
 /** Thread id -> current score, set whenever this browser votes. */
 export const scores = createStore<Record<string, number>>({});
 
+/** Take scores the server just reported (thread id -> score) as the ones to show. */
+export function applyScores(fresh: Record<string, number> | undefined) {
+  if (fresh && Object.keys(fresh).length > 0) scores.update((all) => ({ ...all, ...fresh }));
+}
+
 /**
  * Thread id -> the signed-in member's vote, as the server has it. null while nobody is signed in
  * (or the server did not send them); visitors' votes live in device storage instead (lib/votes.ts).
@@ -68,6 +73,14 @@ export const memberVotes = createStore<Record<string, VoteValue> | null>(null);
 
 /** Thread id -> comments this member added during this session (the newest state the server has). */
 export const addedComments = createStore<Record<string, Comment[]>>({});
+
+/**
+ * Ids of the comments the signed-in member liked, as the server has them (it arrives with the
+ * session). null while nobody is signed in or the server did not send them. Thread pages are
+ * rendered by the site's own server, which does not know who is reading, so this is what tells
+ * the browser which thumbs to fill in.
+ */
+export const memberLikes = createStore<Record<string, true> | null>(null);
 
 /** Comment id -> like state, set whenever this member likes or unlikes. */
 export const likes = createStore<Record<string, LikeState>>({});
@@ -90,6 +103,7 @@ export const notifications = createStore<{ unread: number; items: NotificationIt
 /** Forget everything that belongs to a member. Called on sign-in, sign-out, and account change. */
 export function resetMemberData() {
   memberVotes.set(null);
+  memberLikes.set(null);
   addedComments.set({});
   likes.set({});
   savedThreads.set(null);

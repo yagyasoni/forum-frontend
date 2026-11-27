@@ -30,7 +30,7 @@ export default function Avatar({
       className={cx(
         "grid shrink-0 place-items-center rounded-full font-semibold uppercase",
         size === "sm" ? "h-7 w-7 text-[11px]" : "h-9 w-9 text-xs",
-        colorFor(username),
+        colorFor(username || "?"), // an author without a forum profile has no username
         className,
       )}
     >

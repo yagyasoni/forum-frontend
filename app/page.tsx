@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import FilterStrip from "@/components/FilterStrip";
@@ -10,14 +11,56 @@ import { getCategories, getThreads } from "@/lib/api";
 import type { Tab, ThreadQuery } from "@/lib/types";
 import { isMemberCategory } from "@/lib/member-mock";
 import { homeHref } from "@/lib/utils";
+import { HOME_DESCRIPTION, HOME_TITLE, jsonLd, openGraph, siteJsonLd } from "@/lib/seo";
 
 export default function Page(props: PageProps<"/">) {
   // searchParams is request data, so the part that reads it streams in behind Suspense.
   return (
-    <Suspense fallback={<HomeSkeleton />}>
-      <Home searchParams={props.searchParams} />
-    </Suspense>
+    <>
+      {/* Structured data: who runs the site, and its search. Part of the static shell. */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(siteJsonLd())} />
+      <Suspense fallback={<HomeSkeleton />}>
+        <Home searchParams={props.searchParams} />
+      </Suspense>
+    </>
   );
+}
+
+/**
+ * Title, description and canonical address for each view of the list. Search results, the
+ * Top/Unanswered tabs and members-only categories are kept out of the index (see next.config.ts),
+ * so they get no canonical link.
+ */
+export async function generateMetadata(props: PageProps<"/">): Promise<Metadata> {
+  const query = parseQuery(await props.searchParams);
+  const pageSuffix = query.page > 1 ? ` (page ${query.page})` : "";
+
+  if (query.q) return { title: `Search: ${query.q}`, robots: { index: false, follow: true } };
+  if (isMemberCategory(query.category)) return { robots: { index: false, follow: false } };
+
+  const indexable = query.tab === "latest";
+  const canonical = homeHref({ category: query.category, page: query.page });
+
+  if (query.category) {
+    const category = (await getCategories().catch(() => [])).find((c) => c.slug === query.category);
+    if (!category) return { robots: { index: false, follow: true } };
+    const title = `${category.name}: questions and answers from independent pharmacies${pageSuffix}`;
+    const description = `${category.description} Questions and answers from independent pharmacy owners, pharmacists, and technicians.`;
+    return {
+      title: { absolute: title },
+      description,
+      ...(indexable ? { alternates: { canonical } } : { robots: { index: false, follow: true } }),
+      openGraph: openGraph({ title, description, url: canonical }),
+    };
+  }
+
+  const title = `${HOME_TITLE}${pageSuffix}`;
+  return {
+    title: { absolute: title },
+    description: HOME_DESCRIPTION,
+    ...(indexable ? { alternates: { canonical } } : { robots: { index: false, follow: true } }),
+    openGraph: openGraph({ title, description: HOME_DESCRIPTION, url: canonical }),
+  };
 }
 
 async function Home({ searchParams }: { searchParams: PageProps<"/">["searchParams"] }) {
@@ -35,8 +78,17 @@ async function Home({ searchParams }: { searchParams: PageProps<"/">["searchPara
   const [categories, threads] = await Promise.all([getCategories(), getThreads(query)]);
   const isHome = !query.category && !query.q; // the welcome card and lookup show here only
 
+  const category = categories.find((c) => c.slug === query.category);
+
   return (
     <div className="space-y-3">
+      {/* One heading per view for search engines and screen readers. Home's is in the welcome card. */}
+      {query.q ? (
+        <h1 className="sr-only">Search results for {query.q}</h1>
+      ) : category ? (
+        <h1 className="sr-only">{category.name}</h1>
+      ) : null}
+
       {isHome && (
         /* Two cards, one row: community on the left, payer lookup on the right. Stacked below laptop width. */
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">

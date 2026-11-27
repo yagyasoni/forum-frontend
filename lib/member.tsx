@@ -25,6 +25,7 @@ import {
   createStore,
   createdThreads,
   likes,
+  memberLikes,
   memberVotes,
   myThreads,
   notifications,
@@ -46,11 +47,17 @@ export type Notification = NotificationItem;
 
 const session = createStore<{ member: Member | null; loading: boolean }>({ member: null, loading: true });
 
+// Each session check gets a number; only the newest one is allowed to write its answer. Without
+// this, a slow check started at page load could arrive after a sign-in or sign-out and undo it.
+let latestCheck = 0;
+
 /** Ask the server who is signed in. Called once on page load and again after a sign-in. */
 async function loadMember() {
+  const check = ++latestCheck;
   let member: Member | null = null;
   let unread = 0;
   let votes: Record<string, VoteValue> | null = null;
+  let liked: string[] | null = null;
   try {
     const raw = await getMe();
     if (raw?.profile) {
@@ -65,10 +72,12 @@ async function loadMember() {
       };
       unread = raw.unread ?? 0;
       votes = raw.votes ?? null;
+      liked = raw.likedComments ?? null;
     }
   } catch {
     // not reachable or not signed in: treat as a visitor
   }
+  if (check !== latestCheck) return; // a newer check, or a sign-out, has taken over
   if (session.get().member?.email !== member?.email) resetMemberData(); // a different person
   notifications.update((n) => ({ ...n, unread }));
   if (votes) {
@@ -77,6 +86,7 @@ async function loadMember() {
     memberVotes.set(votes);
     clearLocalVotes();
   }
+  if (liked) memberLikes.set(Object.fromEntries(liked.map((commentId) => [commentId, true as const])));
   session.set({ member, loading: false });
 }
 
@@ -118,6 +128,7 @@ export function findProfile(_email: string): Profile | null {
 /** Sign out the current member. */
 export async function signOut(): Promise<void> {
   await apiSignOut();
+  latestCheck++; // any session check still on its way must not sign the member back in
   resetMemberData();
   clearLocalVotes(); // the arrows shown were this member's votes
   session.set({ member: null, loading: false });
@@ -274,23 +285,52 @@ export async function addComment(threadId: string, text: string): Promise<void> 
 
 // ---- comment likes ---------------------------------------------------------------------------
 
-/** A comment's like state: what this member changed here, or else what the server sent. */
+/**
+ * A comment's like state. In order: what this member changed during this visit, then the liked
+ * list that came with the session, then what the page itself was rendered with.
+ */
 export function useLike(comment: Comment): LikeState {
   const changed = useStore(likes, (all) => all[comment.id], undefined);
-  return changed ?? { liked: !!comment.likedByMe, count: comment.likeCount };
+  const mine = useStore(memberLikes, (all) => all, null);
+  if (changed) return changed;
+  return { liked: !!mine?.[comment.id] || !!comment.likedByMe, count: comment.likeCount };
 }
 
-/** Like or unlike a comment. One request; the count shown is the server's. */
-export async function toggleLike(threadId: string, commentId: string, current: LikeState): Promise<void> {
-  const set = (state: LikeState) => likes.update((all) => ({ ...all, [commentId]: state }));
-  set({ liked: !current.liked, count: Math.max(0, current.count + (current.liked ? -1 : 1)) });
-  try {
-    const { likeCount } = await likeComment(threadId, commentId);
-    // The endpoint toggles, so the direction the count moved says which state the server is in.
-    set({ liked: likeCount > current.count ? true : likeCount < current.count ? false : !current.liked, count: likeCount });
-  } catch {
-    set(current);
+// One like request per comment at a time. A click while one is on its way is not dropped: the
+// newest choice is remembered and sent as soon as the first one answers.
+const likeQueue = new Map<string, { wanted: boolean; confirmed: LikeState }>();
+
+/**
+ * Like or unlike a comment. The thumb and count change at once; the server is told the state the
+ * member wants (not "flip it"), so a repeated click can never undo a like by accident.
+ */
+export function toggleLike(threadId: string, commentId: string, current: LikeState): void {
+  const show = (state: LikeState) => likes.update((all) => ({ ...all, [commentId]: state }));
+  const next: LikeState = { liked: !current.liked, count: Math.max(0, current.count + (current.liked ? -1 : 1)) };
+  show(next);
+
+  const waiting = likeQueue.get(commentId);
+  if (waiting) {
+    waiting.wanted = next.liked;
+    return;
   }
+  const entry = { wanted: next.liked, confirmed: current };
+  likeQueue.set(commentId, entry);
+  (async () => {
+    try {
+      let sent: boolean | undefined;
+      while (sent !== entry.wanted) {
+        sent = entry.wanted;
+        const result = await likeComment(threadId, commentId, sent);
+        entry.confirmed = { liked: result.liked ?? sent, count: result.likeCount };
+      }
+    } catch {
+      // fall through: show the last state the server accepted
+    } finally {
+      likeQueue.delete(commentId);
+      show(entry.confirmed);
+    }
+  })();
 }
 
 // ---- notifications ---------------------------------------------------------------------------

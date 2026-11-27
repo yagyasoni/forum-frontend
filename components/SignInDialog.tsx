@@ -8,6 +8,7 @@ import { ArrowLeft, Loader2, X } from "lucide-react";
 import Logo from "./Logo";
 import ProfileForm from "./ProfileForm";
 import { signInEmail, signInGoogle, putProfile } from "@/lib/api";
+import { applyScores } from "@/lib/live";
 import { useMemberRefresh } from "@/lib/member";
 
 const SignInContext = createContext<() => void>(() => {});
@@ -68,6 +69,7 @@ export function SignInProvider({ children }: { children: ReactNode }) {
         clearTimeout(resetTimeout);
         try {
           const result = await signInGoogle(response.credential);
+          applyScores(result.scores); // scores the server corrected while merging this browser's votes
           if (!result.hasProfile) {
             setStep("setup");
           } else {
@@ -108,6 +110,7 @@ export function SignInProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       const result = await signInEmail(email.trim(), password);
+      applyScores(result.scores); // scores the server corrected while merging this browser's votes
       if (!result.hasProfile) {
         setStep("setup");
       } else {

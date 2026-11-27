@@ -2,8 +2,10 @@ import { Suspense } from "react";
 import { MembersOnly, PageTitle } from "@/components/MemberBits";
 import NewPostForm from "@/components/NewPostForm";
 import { getCategories } from "@/lib/api";
+import { NO_INDEX } from "@/lib/seo";
 
-export const metadata = { title: "Create post" };
+// Signed-in page: kept out of search results (also blocked in robots.txt).
+export const metadata = { title: "Create post", robots: NO_INDEX };
 
 export default function Page() {
   return (

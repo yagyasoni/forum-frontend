@@ -15,9 +15,14 @@ import type {
 import * as mock from "./mock";
 import type { VoteValue } from "./votes";
 import { cache } from "react";
+import { requestIsBot } from "./seo";
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL;
 const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "true" || !BASE;
+
+// Thread ids come from the address bar (/t/<id>). Only a well-formed id is ever sent to the backend:
+// anything else, such as "../categories", would otherwise be read as a different API path.
+const THREAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ---- authenticated helpers (client-side only) ------------------------------
 
@@ -95,6 +100,7 @@ export async function getThreads(query: ThreadQuery): Promise<ThreadPage> {
 // share a single fetch and the backend counts one view, not two.
 export const getThread = cache(async (id: string): Promise<ThreadDetail | null> => {
   if (USE_MOCK) return mock.thread(id);
+  if (!THREAD_ID.test(id)) return null; // not a thread id: "not found" without calling the backend
 
   // Forward the forum_session cookie so the backend knows who is requesting
   // (needed for likedByMe, savedByMe etc.). cookies() is only available server-side.
@@ -108,15 +114,49 @@ export const getThread = cache(async (id: string): Promise<ThreadDetail | null> 
     } catch { /* not in a request context */ }
   }
 
+  const headers: Record<string, string> = {};
+  if (cookieHeader) headers.Cookie = cookieHeader;
+  // A crawler or link-preview bot opening the page is not a reader: tell the backend not to count it.
+  if (await requestIsBot()) headers["X-Forum-No-View"] = "1";
+
   const url = new URL(`${BASE!.replace(/\/+$/, "")}/api/threads/${id}`);
-  const res = await fetch(url, {
-    cache: "no-store",
-    headers: cookieHeader ? { Cookie: cookieHeader } : {},
-  });
+  const res = await fetch(url, { cache: "no-store", headers });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`${res.status} ${res.statusText} for /api/threads/${id}`);
   return res.json();
 });
+
+/** A public thread for its link-preview image. Never counts a view and never sends a login. */
+export async function getThreadPreview(id: string): Promise<ThreadDetail | null> {
+  if (USE_MOCK) return mock.thread(id);
+  if (!THREAD_ID.test(id)) return null;
+  const res = await fetch(`${BASE!.replace(/\/+$/, "")}/api/threads/${id}`, {
+    cache: "no-store",
+    headers: { "X-Forum-No-View": "1" },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText} for /api/threads/${id}`);
+  return res.json();
+}
+
+export type SitemapEntries = {
+  threads: Array<{ id: string; lastActivityAt: string }>;
+  categories: Array<{ slug: string; lastActivityAt: string | null }>;
+};
+
+/** Every public thread and category with its last change, for sitemap.xml. */
+export async function getSitemapEntries(): Promise<SitemapEntries> {
+  if (USE_MOCK) {
+    const threads: SitemapEntries["threads"] = [];
+    for (let page = 1; page <= 50; page++) {
+      const list = mock.threads({ tab: "latest", page });
+      threads.push(...list.items.map((t) => ({ id: t.id, lastActivityAt: t.lastActivityAt })));
+      if (!list.hasMore) break;
+    }
+    return { threads, categories: mock.categories().map((c) => ({ slug: c.slug, lastActivityAt: null })) };
+  }
+  return (await get<SitemapEntries>("/api/sitemap")) ?? { threads: [], categories: [] };
+}
 
 /** Comments only, for expanding them on a card. Unlike getThread this does not count a view. */
 export async function getComments(threadId: string): Promise<Comment[]> {
@@ -157,6 +197,7 @@ export type MeResponse = {
   unread: number;
   profile: MeProfile | null;
   votes?: Record<string, VoteValue>; // thread id -> this member's vote
+  likedComments?: string[]; // ids of the comments this member liked
 };
 
 export async function getMe(): Promise<MeResponse | null> {
@@ -166,21 +207,26 @@ export async function getMe(): Promise<MeResponse | null> {
   return authedGet<MeResponse>("/api/me");
 }
 
+// `scores` lists the threads whose score changed when this browser's votes were merged into the
+// account (thread id -> new score), so the cards already on screen can be corrected in place.
+type SignInResponse = { user: { id: string; hasProfile: boolean }; scores?: Record<string, number> };
+export type SignedIn = { id: string; hasProfile: boolean; scores?: Record<string, number> };
+
 /** This browser's visitor id. Sent at sign-in so votes cast before signing in move to the account. */
 async function deviceId(): Promise<string> {
   return (await import("./votes")).getVoterId();
 }
 
-export async function signInEmail(email: string, password: string): Promise<{ id: string; hasProfile: boolean }> {
+export async function signInEmail(email: string, password: string): Promise<SignedIn> {
   if (USE_MOCK) return { id: "mock", hasProfile: true };
-  const data = await post<{ user: { id: string; hasProfile: boolean } }>("/api/auth/login", { email, password, deviceId: await deviceId() });
-  return data.user;
+  const data = await post<SignInResponse>("/api/auth/login", { email, password, deviceId: await deviceId() });
+  return { ...data.user, scores: data.scores };
 }
 
-export async function signInGoogle(idToken: string): Promise<{ id: string; hasProfile: boolean }> {
+export async function signInGoogle(idToken: string): Promise<SignedIn> {
   if (USE_MOCK) return { id: "mock", hasProfile: true };
-  const data = await post<{ user: { id: string; hasProfile: boolean } }>("/api/auth/google", { idToken, deviceId: await deviceId() });
-  return data.user;
+  const data = await post<SignInResponse>("/api/auth/google", { idToken, deviceId: await deviceId() });
+  return { ...data.user, scores: data.scores };
 }
 
 export async function signOut(): Promise<void> {
@@ -193,10 +239,13 @@ export async function putProfile(username: string, role: string, favoriteCategor
   await put("/api/me/profile", { username, role, favoriteCategoryIds });
 }
 
-export async function likeComment(threadId: string, commentId: string): Promise<{ likeCount: number }> {
-  if (USE_MOCK) return { likeCount: 0 };
-  const data = await put<{ likeCount: number }>(`/api/threads/${threadId}/comments/${commentId}/like`, {});
-  return data ?? { likeCount: 0 };
+/**
+ * Sets this member's like on a comment to `liked` and returns the comment's new like count.
+ * Sending the same state twice changes nothing, so a repeated or retried click is harmless.
+ */
+export async function likeComment(threadId: string, commentId: string, liked: boolean): Promise<{ likeCount: number; liked?: boolean }> {
+  if (USE_MOCK) return { likeCount: liked ? 1 : 0, liked };
+  return put<{ likeCount: number; liked?: boolean }>(`/api/threads/${threadId}/comments/${commentId}/like`, { liked });
 }
 
 export async function putSave(threadId: string, saved: boolean): Promise<void> {

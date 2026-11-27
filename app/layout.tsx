@@ -8,14 +8,20 @@ import Sidebar from "@/components/Sidebar";
 import RightRail from "@/components/RightRail";
 import { SignInProvider } from "@/components/SignInDialog";
 import { MemberProvider } from "@/lib/member";
+import { SITE_NAME, SITE_URL } from "@/lib/seo";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
+  // Lets every page use relative URLs for canonical links and previews.
+  metadataBase: new URL(SITE_URL),
   title: { default: "AuditProRx Community", template: "%s · AuditProRx Community" },
   description:
     "A community for independent pharmacy owners, pharmacists, and technicians: PBM audits, claims and rejections, inventory, and compliance.",
+  // Link previews on WhatsApp, LinkedIn, X and Slack. The image comes from app/opengraph-image.tsx.
+  openGraph: { siteName: SITE_NAME, locale: "en_US", type: "website" },
+  twitter: { card: "summary_large_image" },
 };
 
 /** One layout for every page: top bar, left nav, content, right rail, footer. */

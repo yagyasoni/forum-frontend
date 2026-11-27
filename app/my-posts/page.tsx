@@ -1,7 +1,9 @@
 import { MembersOnly, PageTitle } from "@/components/MemberBits";
 import { MyThreads } from "@/components/MemberLists";
+import { NO_INDEX } from "@/lib/seo";
 
-export const metadata = { title: "My posts" };
+// Signed-in page: kept out of search results (also blocked in robots.txt).
+export const metadata = { title: "My posts", robots: NO_INDEX };
 
 export default function Page() {
   return (
