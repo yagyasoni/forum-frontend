@@ -4,6 +4,7 @@ import { useState, useSyncExternalStore, type FormEvent } from "react";
 import Link from "next/link";
 import { ArrowBigDown, ArrowBigUp, BadgeCheck, ChevronDown, Eye, Loader2, Lock, MessageSquare, Pin } from "lucide-react";
 import Avatar from "./Avatar";
+import CopyLink from "./CopyLink";
 import ImageLightbox from "./ImageLightbox";
 import { SignInButton } from "./SignInDialog";
 import { getComments, voteThread } from "@/lib/api";
@@ -108,19 +109,24 @@ export default function ThreadCard({ thread }: { thread: ThreadRow }) {
         )}
 
         {/* Actions */}
-        <div className="mt-3 flex items-center gap-2 border-t border-line pt-3">
+        <div className="mt-3 flex items-center gap-1.5 border-t border-line pt-3">
           <VoteButtons threadId={thread.id} score={thread.likeCount} />
           <button
             type="button"
             onClick={toggleComments}
             aria-expanded={open}
-            className="btn-ghost h-7 gap-1.5 px-2 text-xs"
+            className="btn-ghost h-7 gap-1 px-2 text-xs"
           >
             <MessageSquare size={14} />
-            {commentCount} {commentCount === 1 ? "comment" : "comments"}
+            <span>{commentCount}</span>
+            <span className="hidden sm:inline">{commentCount === 1 ? "comment" : "comments"}</span>
             <ChevronDown size={13} className={cx("transition-transform", open && "rotate-180")} />
           </button>
-          <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted tabular-nums">
+          <CopyLink
+            url={`${typeof window !== "undefined" ? window.location.origin : ""}/t/${thread.id}`}
+            className="btn-ghost h-7 gap-1 px-2 text-xs"
+          />
+          <span className="ml-auto flex shrink-0 items-center gap-1 text-xs text-muted tabular-nums">
             <Eye size={14} /> {compact(thread.viewCount)}
           </span>
         </div>

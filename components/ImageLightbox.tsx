@@ -17,7 +17,7 @@ export default function ImageLightbox({ src, crop = false }: { src: string; crop
         className="block w-full cursor-zoom-in overflow-hidden rounded-md border border-line"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} alt="" loading="lazy" className={cx("w-full", crop ? "aspect-[2/1] object-cover" : "aspect-[16/9] object-contain bg-bg")} />
+        <img src={src} alt="" loading="lazy" className={cx("w-full object-contain bg-bg", crop ? "max-h-80" : "max-h-[32rem]")} />
       </button>
 
       <dialog

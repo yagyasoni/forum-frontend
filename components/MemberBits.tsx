@@ -37,7 +37,7 @@ export function HomeIntro() {
             Independent pharmacies comparing notes on PBM audits, claim rejections, wholesaler invoices, and
             compliance. Read freely, sign in to join.
           </p>
-          <SignInButton className="btn-primary mt-2.5 h-7 px-2.5 text-xs">Join the community</SignInButton>
+          <SignInButton className="btn-primary mt-2.5 h-7 px-2.5 text-xs">Ask a question</SignInButton>
         </div>
       </section>
     );
@@ -105,7 +105,8 @@ export function SaveButton({ thread, className }: { thread: ThreadRow; className
 
   return (
     <button type="button" onClick={save} aria-pressed={isSaved} className={className}>
-      <Bookmark size={14} fill={isSaved ? "currentColor" : "none"} /> {isSaved ? "Saved" : "Save"}
+      <Bookmark size={14} fill={isSaved ? "currentColor" : "none"} />
+      <span className="hidden sm:inline">{isSaved ? "Saved" : "Save"}</span>
     </button>
   );
 }
@@ -128,7 +129,8 @@ export function ReportButton({ className }: { className?: string }) {
   return (
     <>
       <button type="button" onClick={() => (member ? ref.current?.showModal() : signIn())} className={className}>
-        <Flag size={14} /> Report
+        <Flag size={14} />
+        <span className="hidden sm:inline">Report</span>
       </button>
 
       <dialog

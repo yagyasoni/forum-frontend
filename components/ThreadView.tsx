@@ -26,7 +26,7 @@ export default function ThreadView({ data }: { data: ThreadDetail }) {
         </Link>
       </nav>
 
-      <div className="card p-5 sm:p-6">
+      <div className="card p-4 sm:p-6">
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="chip">{thread.category.name}</span>
           {thread.isPinned && (
@@ -41,7 +41,7 @@ export default function ThreadView({ data }: { data: ThreadDetail }) {
           )}
         </div>
 
-        <h1 className="mt-2 text-xl font-semibold tracking-tight leading-snug sm:text-2xl">{thread.title}</h1>
+        <h1 className="mt-2 text-lg font-semibold tracking-tight leading-snug sm:text-2xl">{thread.title}</h1>
 
         <div className="mt-4 flex items-center gap-3">
           <Avatar username={thread.author.username} />
@@ -68,8 +68,8 @@ export default function ThreadView({ data }: { data: ThreadDetail }) {
           </div>
         )}
 
-        {/* Every control here is the same 28px height as the vote box. */}
-        <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-line pt-4">
+        {/* Actions row */}
+        <div className="mt-5 flex items-center gap-2 border-t border-line pt-4">
           <VoteButtons threadId={thread.id} score={thread.likeCount} />
           <SaveButton thread={thread} className="btn-ghost h-7 px-2.5 text-xs" />
           <CopyLink className="btn-ghost h-7 px-2.5 text-xs" />

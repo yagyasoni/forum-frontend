@@ -3,7 +3,7 @@
 
 export type Tab = "latest" | "top" | "unanswered";
 
-export type Role = "owner" | "pharmacist" | "technician" | "consultant" | "student";
+export type Role = "owner" | "pharmacist" | "technician" | "consultant" | "student" | "other";
 
 export const ROLE_LABEL: Record<Role, string> = {
   owner: "Pharmacy Owner",
@@ -11,6 +11,7 @@ export const ROLE_LABEL: Record<Role, string> = {
   technician: "Technician",
   consultant: "Consultant",
   student: "Student",
+  other: "Other",
 };
 
 export type Category = {

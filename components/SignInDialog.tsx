@@ -99,7 +99,10 @@ export function SignInProvider({ children }: { children: ReactNode }) {
     }, 5000);
 
     // Reset button after 2 minutes if user never completes sign-in (closed popup, etc).
-    resetTimeout = setTimeout(() => setSubmitting(false), 120000);
+    resetTimeout = setTimeout(() => {
+      setSubmitting(false);
+      setError("Google sign-in timed out or was cancelled. Please try again.");
+    }, 120000);
   }
 
   async function submitPassword(e: FormEvent<HTMLFormElement>) {
